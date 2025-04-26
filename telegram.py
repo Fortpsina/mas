@@ -9,14 +9,14 @@ from datetime import timedelta
 
 import sys, json, pprint, importlib, base64
 
-from user import *
-from command_logger import *
-from feedbacks import *
-from schedule import *
-from markups import *
+from plugins.user import *
+from plugins.command_logger import *
+from plugins.feedbacks import *
+from plugins.schedule import *
+from plugins.markups import *
 
-from DayOfWeek import is_date
-from TagSwitcher import tags_swither
+from plugins.DayOfWeek import is_date
+from plugins.TagSwitcher import tags_swither
 
 from config import *
 
@@ -502,7 +502,6 @@ def set_new_profile_vk (message):
                 found_profile = True
                 who_changed = el[1]
                 old_link = el[2]
-                print (123)
                 cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {el[3]}')
                 conn.commit()
 
@@ -518,23 +517,9 @@ def set_new_profile_vk (message):
 
 @bot.message_handler (commands = ['exam'])
 def find_answer_for_exam (message):
-    requestor = message.chat.id
+    print(who_is_requestor(message = message)[0])
 
-    conn = sqlite3.connect ('database.sql')
-    cur = conn.cursor ()
-    cur.execute ('SELECT * FROM users')
-    users = cur.fetchall ()
-
-    for user in users:
-        if user [3] == requestor:
-            requestor = user [1]
-
-    print (f'{requestor}: {message.text}')
-
-    cur.close ()
-    conn.close ()
-
-    exams = json.load (open ('answers.json', 'r'))
+    exams = json.load(open('answers.json', 'r'))
 
     all_tags = []
     all_files = []
@@ -728,10 +713,6 @@ def find_answer_for_exam (message):
             else:
                 data.append (tags_swither (discipline))
                 json.dump (data, open ('answers.json', 'w', encoding='utf-8'), ensure_ascii = False, indent = 4)
-
-
-            if mas:
-                bot.send_message (428192863, f'{requestor}: {message.text}')
 
             bot.reply_to(message, f'Вы создали новую таблицу <b>"{discipline}"</b>.\n\nОтправьте в чат список вопросов по принципу заполнения плана.\n\n<b>Правила оформлени перечня:</b>\n<i>1. В списке НЕ должно быть номеров вопросов;\n2. В списке НЕ должно быть лишних отступов;\n3. Одна строчка = 1 вопрос;\n4. Избегайте любых ковычек, поскольку они ломают скрипты;\n5. Учитывайте, что перечень вопросов может быть больше максимальной длины сообщения. Если в одно сообщение не поместятся все вопросы, просто повторите команду <code>{message.text}</code> и отправьте только те вопросы, которые не поместились изначально - они будут добавлены к общему перечню.</i>', parse_mode = 'html')
 
