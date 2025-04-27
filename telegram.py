@@ -362,7 +362,6 @@ def interactive_profile(message):
         bot.reply_to(message, _to_reply, parse_mode = 'html',
                      reply_markup = profile_options_markup(_own_prifile, message.from_user.id in admin_id))             
 
-
 def set_new_profile_name (message):
     profile = UserProfile(message.from_user.id)
 
@@ -371,6 +370,7 @@ def set_new_profile_name (message):
         return
 
     _new_name = name_helper(message.text.strip())
+    _new_name_content = _new_name['name']
 
     if not _new_name['correct']:
         bot.reply_to(message, _new_name['reply'], parse_mode = 'html')
@@ -379,11 +379,11 @@ def set_new_profile_name (message):
     conn = sqlite3.connect('database.sql')
     cur = conn.cursor()
 
-    cur.execute(f'UPDATE users SET name = "{_new_name['name']}" WHERE user_id = {profile.user_id}')
+    cur.execute(f'UPDATE users SET name = "{_new_name_content}" WHERE user_id = {profile.user_id}')
     conn.commit()
 
-    bot.reply_to(message, f'Вы успешно изменили имя с <b>{profile.user_name}</b> на <b>{_new_name['name']}</b>.\n\n', parse_mode = 'html')
-    Fortpsinabot.send_message(428192863, f'<b>{profile.user_name}</b> ({message.from_user.id}) изменил имя на <b>{_new_name['name']}</b>.', parse_mode = 'html')
+    bot.reply_to(message, f'Вы успешно изменили имя с <b>{profile.user_name}</b> на <b>{_new_name_content}</b>.\n\n', parse_mode = 'html')
+    Fortpsinabot.send_message(428192863, f'<b>{profile.user_name}</b> ({message.from_user.id}) изменил имя на <b>{_new_name_content}</b>.', parse_mode = 'html')
 
     cur.close()
     conn.close()
