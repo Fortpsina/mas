@@ -15,6 +15,7 @@ from plugins.command_logger import *
 from plugins.feedbacks import *
 from plugins.schedule import *
 from plugins.markups import *
+from plugins.name_checker import name_helper
 
 from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
@@ -358,36 +359,31 @@ def interactive_profile(message):
         _to_reply += f"  Цвет: <code>{profile.user_color}</code>\n"
         _to_reply += f"  Регистрация: <code>{profile.user_reg}</code>\n"
 
-        bot.reply_to(message, _to_reply, parse_mode = 'html', reply_markup = profile_options_markup(_own_prifile))             
+        bot.reply_to(message, _to_reply, parse_mode = 'html',
+                     reply_markup = profile_options_markup(_own_prifile, message.from_user.id in admin_id))             
 
 
 def set_new_profile_name (message):
-    if len(message.text) > 48:
-        bot.reply_to (message, 'Слишком длинное имя. Укажите не более 48-и символов')
-        return
-    new_profile_name = message.text.strip()
+    profile = UserProfile(message.from_user.id)
 
+    if not profile.exists:
+        bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+        return
+
+    _new_name = name_helper(message.text.strip())
+
+    if not _new_name['correct']:
+        bot.reply_to(message, _new_name['reply'], parse_mode = 'html')
+        return
+    
     conn = sqlite3.connect('database.sql')
     cur = conn.cursor()
-    cur.execute('SELECT * FROM users')
-    users = cur.fetchall()
 
-    found_profile = False
+    cur.execute(f'UPDATE users SET name = "{_new_name['name']}" WHERE user_id = {profile.user_id}')
+    conn.commit()
 
-    for el in users:
-        if el[3] == message.from_user.id:
-            found_profile = True
-            old_name = el[1]
-
-            cur.execute(f'UPDATE users SET name = "{new_profile_name}" WHERE user_id = {el[3]}')
-            conn.commit()
-
-            bot.reply_to(message, f'Вы успешно изменили имя с <b>{old_name}</b> на <b>{new_profile_name}</b>.\n\n', parse_mode = 'html')
-            Fortpsinabot.send_message(428192863, f'<b>{old_name}</b> ({message.from_user.id}) изменил имя на <b>{new_profile_name}</b>.', parse_mode = 'html')
-
-
-    if found_profile == False:
-        bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+    bot.reply_to(message, f'Вы успешно изменили имя с <b>{profile.user_name}</b> на <b>{_new_name['name']}</b>.\n\n', parse_mode = 'html')
+    Fortpsinabot.send_message(428192863, f'<b>{profile.user_name}</b> ({message.from_user.id}) изменил имя на <b>{_new_name['name']}</b>.', parse_mode = 'html')
 
     cur.close()
     conn.close()
@@ -400,7 +396,7 @@ def set_new_profile_vk (message):
         return
 
     elif 'https://vk.com/' not in message.text:
-        bot.reply_to(message, 'Неверный формат ссылки. Попробуйте скопировать её из адресной строки с вашей страницей или поделиться профилем.\n\nПример: <code>/profile vk https://vk.com/andrewmartinoff</code>', parse_mode = 'html')
+        bot.reply_to(message, 'Неверный формат ссылки. Попробуйте скопировать её из адресной строки с вашей страницей или поделиться профилем.\n\nПример: <code>https://vk.com/andrewmartinoff</code>', parse_mode = 'html')
         return
 
     else:
@@ -767,7 +763,7 @@ def examanswer (message):
 
         if cmd[3] == 'cstory':
             if message.from_user.id in admin_id:
-                new_authors = f'Записи о редакциях были удалены {datetime.datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
+                new_authors = f'Записи о редакциях были удалены {datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
 
             else:
                 bot.reply_to(message, 'Извините, вы не можете отчистить историю редактирования ответа.')
@@ -777,7 +773,7 @@ def examanswer (message):
             for el in exam_tasks:
                 if el[1] == int (cmd[2]):
                     text_of_the_question = el[2]
-                    new_authors = f'{el[4]}\n{who_is_requestor (message)[0]} (ред. от {datetime.datetime.now().strftime("%d:%m:%Y %H:%M:%S")})'
+                    new_authors = f'{el[4]}\n{who_is_requestor (message)[0]} (ред. от {datetime.now().strftime("%d:%m:%Y %H:%M:%S")})'
 
         new_answer = message.text.replace(f'/examanswer {cmd[1]} {cmd[2]} ', '')
 
@@ -812,10 +808,10 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
         for el in exam_tasks:
             if int (el [1]) == int (index_of_task + 1):
 
-                new_authors = f'{el [4]}\n{requestor} (ред. от {datetime.datetime.now().strftime("%d:%m:%Y %H:%M:%S")})'
+                new_authors = f'{el [4]}\n{requestor} (ред. от {datetime.now().strftime("%d:%m:%Y %H:%M:%S")})'
 
                 if mas:
-                    actual_time = datetime.datetime.now() + timedelta(hours=3)
+                    actual_time = datetime.now() + timedelta(hours=3)
                     new_authors = f'{el [4]}\n{requestor} (ред. от {actual_time.strftime("%d.%m.%Y %H:%M:%S")})'
 
                 answer = str (message.text)
@@ -844,109 +840,72 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
 
 @bot.message_handler(commands = ['mute'])
 def mute_user (message):
-    print (who_is_requestor(message)[0])
-    '''
-    Форма: /pun_type punned_id time reason
-    Пример: /mute @anisprtof 30 спам
-    '''
-    if message.from_user.id in admin_id:
-        command = message.text.split()
-        reason = ''
+    _req = who_is_requestor(message)
+    print(_req[0])
 
-        if len(command) > 1 and command [1] == 'wipe':
-
-            try:
-                pun_logs = json.load(open('punishments.json', 'r', encoding='utf-8'))
-
-            except json.JSONDecodeError:
-                pun_logs = []
-
-            bot.reply_to (message, 'Вы удалили все имеющиеся наказания. Отправляю вам их перечень.')
-
-            for el in pun_logs:
-                bot.send_message (message.from_user.id, f'{el}')
-                print (el)
-
-            json.dump([], open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
-
-            return
-
-
-        if len (command) < 3:
-            bot.reply_to (message, 'Формат команды:\n<code>/mute [Пользователь*] [Время в секундах] [Причина]</code>\n\n*Указать можно одно из следующих значений:\n<i>1) Telegram ID (указан в расширенном профиле бота, если пользователь зарегестрирован, в противом случае можно проверить через консоль);\n2) Тэг пользователя (Можно скопировать через просмотр профиля в ТГ);\n3) Имя пользователя в Telegram, если его ID не отображается и Тэг в профиле скрыт.</i>', parse_mode = 'html')
-            return
-
-        if len (command) == 3:
-            reason = 'Не указано'
-        else:
-            reason = message.text.replace(f'{command[0]} {command[1]} {command[2]} ', '')
-
-        if command[2].isdigit() == False:
-            bot.reply_to (message, 'Укажите время мута в секундах.')
-            return
-
-        elif int (command[2]) > 315360000:
-            bot.reply_to(message, 'Максимальное время, на которое можно выдать мут:\n\n - <code>315360000</code> секунд \n - <code>10</code> лет.', parse_mode = 'html')
-            return
-
-        first_date_readable = f'{datetime.datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
-
-        if mas == True:
-            actual_time = datetime.datetime.now() + timedelta(hours=3)
-            first_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
-
-
-        second_date = datetime.datetime.now() + timedelta(seconds = int (command[2]))
-        second_date_readable = second_date.strftime("%d.%m.%Y %H:%M:%S")
-
-        if mas == True:
-            actual_time = datetime.datetime.now() + timedelta(hours=3) + timedelta(seconds = int (command[2]))
-            second_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
-
-
-        requestor = message.from_user.id
-
-        conn = sqlite3.connect('database.sql')
-        cur = conn.cursor()
-        cur.execute('SELECT name, user_id, reserve_1 FROM users')
-        users = cur.fetchall()
-
-        for user in users:
-            if user[1] == requestor:
-                requestor = user[0]
-
-        cur.close()
-        conn.close()
-
-        try:
-            data = json.load(open('punishments.json', 'r', encoding='utf-8'))
-
-        except json.JSONDecodeError:
-            data = []
-
-        pun_append (
-            punnished_id = command[1],
-            reason = reason,
-            pun_author = requestor,
-            pun_type = message.text.split()[0].replace('/', ''),
-            first_date = message.json['date'],
-            pun_time = int (command[2]),
-            second_date_readable = second_date_readable
-        )
-
-
-        bot.reply_to(message, f'''Выдача мута пользователю {command[1]}:\n
-Выдал: <code>{requestor}</code>;
-На сколько секунд: <code>{command[2]}</code>;
-Причина: <code>{reason}</code>;
-
-Начало мута: <code>{first_date_readable}</code>
-Конец мута: <code>{second_date_readable}</code>''',
-parse_mode = 'html')
-
-    else:
+    if message.from_user.id not in admin_id:
         bot.reply_to (message, 'Извините, вы не можете использовать эту команду.')
         return
+    
+    command = message.text.split()
+    reason = ''
+
+    if len(command) > 1 and command [1] == 'wipe':
+
+        try:
+            pun_logs = json.load(open('punishments.json', 'r', encoding='utf-8'))
+
+        except json.JSONDecodeError:
+            pun_logs = []
+
+        bot.reply_to (message, 'Вы удалили все имеющиеся наказания. Отправляю вам их перечень.')
+
+        for el in pun_logs:
+            bot.send_message (message.from_user.id, f'{el}')
+            print (el)
+
+        json.dump([], open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
+
+        return
+
+
+    if len (command) < 3:
+        bot.reply_to (message, 'Формат команды:\n<code>/mute [Пользователь*] [Время в секундах] [Причина]</code>\n\n*Указать можно одно из следующих значений:\n<i>1) Telegram ID (указан в расширенном профиле бота, если пользователь зарегестрирован, в противом случае можно проверить через консоль);\n2) Тэг пользователя (Можно скопировать через просмотр профиля в ТГ);\n3) Имя пользователя в Telegram, если его ID не отображается и Тэг в профиле скрыт.</i>', parse_mode = 'html')
+        return
+
+    reason = ''.join(command[2:]) or "Не указано"
+
+    if not command[2].isdigit():
+        bot.reply_to (message, 'Укажите время мута в секундах.')
+        return
+
+    elif int(command[2]) > 315360000:
+        bot.reply_to(message, 'Максимальное время, на которое можно выдать мут:\n\n - <code>315360000</code> секунд \n - <code>10</code> лет.', parse_mode = 'html')
+        return
+
+    first_date_readable = f'{datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
+    if mas:
+        actual_time = datetime.now() + timedelta(hours=3)
+        first_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
+
+    second_date = datetime.now() + timedelta(seconds = int (command[2]))
+    second_date_readable = second_date.strftime("%d.%m.%Y %H:%M:%S")
+    if mas:
+        actual_time = datetime.now() + timedelta(hours=3) + timedelta(seconds = int (command[2]))
+        second_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
+
+    pun_append (punnished_id = command[1],
+                reason = reason,
+                pun_author = _req[2],
+                pun_type = message.text.split()[0].replace('/', ''),
+                first_date = message.json['date'],
+                pun_time = int (command[2]),
+                second_date_readable = second_date_readable)
+
+
+    bot.reply_to(message, parse_mode = 'html',
+                 text=f'''Выдача мута пользователю {command[1]}:\n Причина: <code>{reason}</code>;\n\nНачало мута: <code>{first_date_readable}</code>\nКонец мута: <code>{second_date_readable}</code>''',)
+
 
 @bot.message_handler(commands=['unmute'])
 def unmute_user (message):
@@ -996,10 +955,10 @@ def pun_append (punnished_id, reason, pun_author, pun_type, first_date, pun_time
     except json.JSONDecodeError:
         data = []
 
-    first_date_readable = f'{datetime.datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
+    first_date_readable = f'{datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
 
     if mas == True:
-        actual_time = datetime.datetime.now() + timedelta(hours=3)
+        actual_time = datetime.now() + timedelta(hours=3)
         first_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
 
     data.append(
@@ -1271,7 +1230,7 @@ def button_menu_universal_func(call):
             chat_id = call.message.chat.id, message_id = call.message.id,
             text = '''<i><b>Команды для администрирования бота:</b></i>
 
-🔊 <b>/mute</b> & <b>/unmute</b> - выдача & снятие мута в беседах.
+🔊 <b>/mute</b> & <b>/unmute</b> - выдача & снятие мута в беседах (работает криво, не советую на неё расчитывать).
 
 ♻ <code><b>/wipe everything</b></code> - очистить всё расписание;
 ♻ <code><b>/wipe homework</b></code> - очистить только д/з и открепить план;
@@ -1447,11 +1406,11 @@ def button_menu_universal_func(call):
         if 'change' in call.data.split()[1]:
             try:
                 if 'Name' == call.data.split()[2]:
-                    bot.send_message (call.message.chat.id, 'Укажите новое имя. Нежелательно использовать цифры, знаки препинания и эмодзи. Длина должна быть не более 48-и символов.')
+                    bot.send_message (call.message.chat.id, 'Укажите новое имя. В имени должна быть только 1 раскладка (или латиница или кириллица), не должно быть цифр и любых знаков, кроме нижнего подчёркивания и дефиса.')
                     bot.register_next_step_handler (call.message, set_new_profile_name)
 
                 elif 'VK' == call.data.split()[2]:
-                    bot.send_message (call.message.chat.id, 'Укажите новое имя. Нежелательно использовать цифры, знаки препинания и эмодзи. Длина должна быть не более 48-и символов.')
+                    bot.send_message (call.message.chat.id, 'Укажите новую ссылку. Формат: <code>https://vk.com/example</code>.', parse_mode='html')
                     bot.register_next_step_handler (call.message, set_new_profile_vk)
 
                 elif 'Group' == call.data.split()[2]:
@@ -1461,6 +1420,9 @@ def button_menu_universal_func(call):
                 elif 'Color' == call.data.split()[2]:
                     bot.edit_message_text(chat_id = call.message.chat.id, message_id = call.message.message_id,
                                           text = '<b>Выберете цветовую тему:</b>', parse_mode = 'html', reply_markup = color_chooser_markup())
+                    
+                elif "delete" == call.data.split()[2]:
+                    bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Для избежания случайного удаления профиля используйте /dev users delete ID.')
 
             except Exception as _ex:
                 bot.send_message(call.message.chat.id, f'Произошла непредвиденная ошибка:\n{_ex}')
