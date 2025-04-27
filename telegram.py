@@ -96,7 +96,8 @@ def user_pass(message):
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
 def help(message):
     print(who_is_requestor(message = message)[0])
-    bot.reply_to(message, '''<b>Получение справок по использованию команд:</b>''', parse_mode='html', reply_markup = main_help_markup())
+    bot.reply_to(message, '''<b>Получение справок по использованию команд:</b>''',
+                 parse_mode='html', reply_markup = main_help_markup(message.from_user.id in admin_id))
 
 
 @bot.message_handler (commands = ['execute'])
