@@ -7,7 +7,7 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReactionTy
 import datetime
 from datetime import timedelta
 
-import sys, json, pprint, importlib, base64
+import sys, json, pprint
 from pathlib import Path
 
 from plugins.user import *
@@ -379,14 +379,12 @@ def find_answer_for_exam (message):
 
     try:
         if len (message.text.split()) == 1:
-            exam_type_choosing = types.InlineKeyboardMarkup(row_width = 1)
+            exam_type_choosing = InlineKeyboardMarkup(row_width = 1)
 
             for el in exams: # какие экзамены бывают
-                exam_type_choosing.add(telebot.types.InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
+                exam_type_choosing.add(InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
 
-            exam_input_if_requestor_is_admin = "Команды не для просмотра ответов:\n1. <code>/exam set Философия</code> - создать постоянный перечень вопросов к экзамену.\n2. <code>/exam delete гп</code> - удалить вопросы к экзамену.\n"
-
-            bot.reply_to(message, f'Уточните свой запрос, введя 1-2 аргумента, согласно следующим примерам:\n\n<b>Пример 1:</b> <code>/exam мп 13</code> - 13 вопрос по Международному праву <i>(указать предмет можно первыми буквами (МП), первым словом (Международное), полным названием (международноеправо) и т.д.)</i>;\n\n<b>Пример 2:</b> <code>/exam понятие, признаки</code> - поиск вопроса по ключевым словам <i>(чем меньше ключевых слов - тем шире поиск);</i>\n\n<b>Пример 3:</b> <code>/exam фп</code> - открыть меню с вопросами во конкретному предмету;\n\n<b>Пример 4:</b> <code>/exam question zemelnoe</code> - вывести только вопросы к экзамену по земельному праву (question можно заменить на q);\n\n{exam_input_if_requestor_is_admin if message.from_user.id in admin_id else exam_input_if_requestor_is_admin}\n<b>Предварительно предлагаю выбрать перечень вопросов и ответов к одму из следующих экзаменов:</b>', parse_mode = 'html', reply_markup = exam_type_choosing)
+            bot.reply_to(message, EXAM_1, parse_mode = 'html', reply_markup = exam_type_choosing)
 
         elif len (message.text.split()) == 2 and message.text.split()[1].lower() == 'config':
             bot.reply_to (message, f'Состав словаря:\n\ntags - все тэги экзамена\nfile - имя файла (указывается при exam set)\nname - название для показа пользователю\nname_dp - название в дательном падеже\n\n\n{exams}')
