@@ -1,5 +1,4 @@
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
-from .user import UserProfile
 
 def main_help_markup(admin_version: bool = True) -> InlineKeyboardMarkup:
     help_menu = InlineKeyboardMarkup(row_width = 1)
@@ -67,10 +66,3 @@ def group_chooser_markup() -> InlineKeyboardMarkup:
     group_menu.add(InlineKeyboardButton(text = 'Нет моей группы', callback_data = f'group set {1}'))
 
     return group_menu
-
-
-def check_old_user_data_markup(user: UserProfile) -> InlineKeyboardMarkup:
-    old_user_data = InlineKeyboardMarkup()
-    user_data = f"{user.user_name}\n{user.user_group}\n{user.user_id}\n{user.user_reg}\n{user.user_vk}"
-    old_user_data.add(InlineKeyboardButton(text = "Посмотреть профиль", callback_data = f'profile check {user_data}'))
-    return old_user_data
