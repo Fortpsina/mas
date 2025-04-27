@@ -8,6 +8,7 @@ import datetime
 from datetime import timedelta
 
 import sys, json, pprint, importlib, base64
+from pathlib import Path
 
 from plugins.user import *
 from plugins.command_logger import *
@@ -19,6 +20,10 @@ from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
 
 from config import *
+
+PROJECT_ROOT = Path(__file__).parent.resolve()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 name = 'NoData'
 conditions = 'https://example.com'
@@ -324,123 +329,37 @@ def lookup(message):
         bot.send_message(message.chat.id, 'id - проверка ID\nmessage - состав message JSON\nmessage None - состав message для чтения в консоли\nrequestor - проверка функции who_is_the_requestor\nusers - проверка database => users')
 
 
-@bot.message_handler(commands = ['profile', 'prof', 'профиль', 'проф'])
+@bot.message_handler(commands = ['profile', 'prof', 'профиль'])
 def interactive_profile(message):
     print(who_is_requestor(message)[0])
+    cmd = message.text.split()
 
-    try:
-        if len (message.text.split()) == 1 or message.text.split()[1] in ('view', 'посмотреть', 'глянуть', 'check', 'c', 'v', 'me', 'my', 'мой', 'я', 'моя', 'cheq', 'чек'):
+    if len(cmd) == 1 or cmd[1] in ('view', 'check', 'v') or cmd[1].isdigit():
 
-            _id = message.from_user.id
-            _own_prifile = True
-            if len(message.text.split()) == 3:
-                _id = int(message.text.split()[2])
-                _own_prifile = False
+        _id = message.from_user.id
+        _own_prifile = True
+        if len(cmd) == 3 and cmd[2].isdigit():
+            _id = int(cmd[2])
+            _own_prifile = False
+        elif len(cmd) == 2 and cmd[1].isdigit():
+            _id = int(cmd[1])
+            _own_prifile = False
 
-            conn = sqlite3.connect('database.sql')
-            cur = conn.cursor()
-            cur.execute('SELECT * FROM users')
-            users = cur.fetchall()
+        profile = UserProfile(_id)
 
-            sent_profile = False
+        if not profile.exists:
+            bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+            return
+        
+        _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
+        _to_reply += f"  Группа: <code>{profile.user_group}</code>\n"
+        _to_reply += f"  ВК: <code>{profile.user_vk}</code>\n"
+        _to_reply += f"  ID: <code>{profile.user_id}</code>\n"
+        _to_reply += f"  Цвет: <code>{profile.user_color}</code>\n"
+        _to_reply += f"  Регистрация: <code>{profile.user_reg}</code>\n"
 
-            for el in users:
-                if el[3] == _id:
-                    sent_profile = True
-                    user_group = 'Нет данных'
+        bot.reply_to(message, _to_reply, parse_mode = 'html', reply_markup = profile_options_markup(_own_prifile))             
 
-                    for group in groups:
-                        if group['id'] == el[7]:
-                            user_group = group['name']
-
-                    if _own_prifile:
-                        bot.reply_to(message, f'Профиль <b>{el[1]}</b>:\n\n  Группа: <code>{user_group}</code>\n  ВК: <code>{el[2]}</code>\n  ID: <code>{el[3]}</code>\n  Цвет: <code>{el[4]}</code>\n  Регистрация: <code>{el[10][:19]}</code>', parse_mode = 'html', reply_markup = profile_options_markup())
-                    else:
-                        bot.reply_to(message, f'Профиль пользователя <b>{el[1]}</b>:\n\n  Группа: <code>{user_group}</code>\n  ВК: <code>{el[2]}</code>\n  ID: <code>{el[3]}</code>\n  Цвет: <code>{el[4]}</code>\n  Регистрация: <code>{el[10][:19]}</code>', parse_mode = 'html')
-
-
-            if sent_profile == False:
-                bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
-
-            cur.close()
-            conn.close()
-
-        elif message.text.split()[1] in ('name'):
-            if len (message.text.split()) < 3:
-                bot.reply_to(message, 'Третий аргумент должен содержать новое имя.\nПример: <code>/profile name Василий</code>', parse_mode = 'html')
-
-            else:
-                new_name = ''
-                for el in message.text.split()[2:]:
-                    new_name += el
-
-                conn = sqlite3.connect('database.sql')
-                cur = conn.cursor()
-                cur.execute('SELECT * FROM users')
-                users = cur.fetchall()
-
-                found_profile = False
-
-                for el in users:
-                    if el[3] == message.from_user.id:
-                        found_profile = True
-                        old_name = el[1]
-
-                        cur.execute(f'UPDATE users SET name = "{new_name}" WHERE user_id = {el[3]}')
-                        conn.commit()
-
-                        bot.reply_to(message, f'Вы успешно изменили имя с <b>{old_name}</b> на <b>{new_name}</b>.\n\n', parse_mode = 'html')
-                        Fortpsinabot.send_message(428192863, f'<b>{old_name}</b> ({message.from_user.id}) изменил имя на <b>{new_name}</b>.', parse_mode = 'html')
-
-
-                if found_profile == False:
-                    bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
-
-                cur.close()
-                conn.close()
-
-        elif message.text.split()[1] in ('vk', 'вк'):
-            if len (message.text.split()) < 3:
-                bot.reply_to(message, 'Третий аргумент должен содержать новую ссылку.\nПример: <code>/profile vk https://vk.com/andrewmartinoff</code>', parse_mode = 'html')
-
-            elif 'https://vk.com/' not in message.text:
-                bot.reply_to(message, 'Неверный формат ссылки. Попробуйте скопировать её из адресной строки с вашей страницей или поделиться профилем.\n\nПример: <code>/profile vk https://vk.com/andrewmartinoff</code>', parse_mode = 'html')
-
-            else:
-                new_link = message.text.split()[2]
-
-                conn = sqlite3.connect('database.sql')
-                cur = conn.cursor()
-                cur.execute('SELECT * FROM users')
-                users = cur.fetchall()
-
-                found_profile = False
-
-                for el in users:
-                    if el[3] == message.from_user.id:
-                        found_profile = True
-                        who_changed = el[1]
-                        old_link = el[2]
-                        print (123)
-                        cur.execute(f'UPDATE users SET pass = "{new_link}" WHERE user_id = {el[3]}')
-                        conn.commit()
-
-                        bot.reply_to(message, f'Вы успешно изменили ссылку на вк с <code>{old_link}</code> на <code>{new_link}</code>.\n\n', parse_mode = 'html')
-                        bot.send_message(428192863, f'<b>{who_changed}</b> изменил ссылку на вк с <code>{old_link}</code> на <code>{new_link}</code>.', parse_mode = 'html')
-
-                if found_profile == False:
-                    bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
-
-                cur.close()
-                conn.close()
-
-        elif message.text.split()[1] in ('group', 'g', 'группа'):
-            bot.reply_to(message, f'Выберете свою группу из списка.', reply_markup = group_chooser_markup())
-
-    except Exception as _ex:
-        print (f'Произошла непредвиденная ошибка:\n\n{_ex}')
-        bot.reply_to(message, 'Произошла непредвиденная ошибка. Обратитесь к администратору.')
-        return
 
 def set_new_profile_name (message):
     if len(message.text) > 48:
@@ -1411,8 +1330,8 @@ def button_menu_universal_func(call):
         if call.data.split()[1] == "details":
             lng = call.data.split()[2]
             ltt = call.data.split()[3]
-            query = f'Ваша долгота: {lng}\nВаша широта: {ltt}\n\nЕсли данный отказ вызван ошибкой и на самом деле вы присутствуете, отправьте скриншот этого сообщения разработчику.'
-            bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = query)
+            query = f'Долгота: {lng}\nШирота: {ltt}\n\nЕсли данный отказ вызван ошибкой и на самом деле вы присутствуете, отправьте скриншот этого сообщения разработчику.'
+            bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text = query)
 
 
     elif 'task' in call.data:
