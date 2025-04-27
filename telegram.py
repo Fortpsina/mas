@@ -272,27 +272,8 @@ def lookup(message):
             pprint.pprint(test_message, width=40)
             bot.send_message(message.chat.id, message if len(command) != 3 and command[2] != 'None' else '...')
 
-        elif command[1] == 'requestor':
-            bot.reply_to(message, f'Запрос:\n{who_is_requestor(message)[0]}\n\nГруппа:\n{who_is_requestor(message)[1]}\n')
-
-        elif command[1] == 'reload':
-            if message.from_user.id not in admin_id:
-                bot.reply_to(message, 'Извините, вы не можете использовать эту команду.')
-                return
-            _possible_modelues = sys.modules
-            bot.send_message (message.chat.id, len (_possible_modelues))
-            if len (command) == 3:
-                try:
-                    bot.send_message (message.chat.id, importlib.reload(command[2]))
-                    bot.reply_to (message, f'{command[2]} успешно перезагружен.')
-                except Exception as _exeption:
-                    bot.reply_to (message, f'{_exeption}\n\n\nДоступные модули:\n{_possible_modelues}')
-            else:
-                bot.reply_to (message, f'Доступные модули:\n{_possible_modelues}')
-
-
     else:
-        bot.send_message(message.chat.id, 'id - проверка ID\nmessage - состав message JSON\nmessage None - состав message для чтения в консоли\nrequestor - проверка функции who_is_the_requestor\nusers - проверка database => users')
+        bot.send_message(message.chat.id, 'id - проверка ID\nmessage - состав message JSON\nmessage None - состав message для чтения в консоли\nusers - проверка database => users')
 
 
 @bot.message_handler(commands = ['profile', 'prof', 'профиль'])
@@ -357,7 +338,7 @@ def set_new_profile_vk (message):
     new_profile_vk = message.text.strip()
 
     if len(message.text) > 48:
-        bot.reply_to (message, 'Слишком длинное значение. Укажите не более 48-и символов')
+        bot.reply_to(message, 'Слишком длинное значение. Укажите не более 48-и символов')
         return
 
     elif 'https://vk.com/' not in message.text:
@@ -367,24 +348,16 @@ def set_new_profile_vk (message):
     else:
         conn = sqlite3.connect('database.sql')
         cur = conn.cursor()
-        cur.execute('SELECT * FROM users')
-        users = cur.fetchall()
 
-        found_profile = False
-
-        for el in users:
-            if el[3] == message.from_user.id:
-                found_profile = True
-                who_changed = el[1]
-                old_link = el[2]
-                cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {el[3]}')
-                conn.commit()
-
-                bot.reply_to(message, f'Вы успешно изменили ссылку на вк с <code>{old_link}</code> на <code>{new_profile_vk}</code>.\n\n', parse_mode = 'html')
-                Fortpsinabot.send_message(428192863, f'<b>{who_changed}</b> изменил ссылку на вк с <code>{old_link}</code> на <code>{new_profile_vk}</code>.', parse_mode = 'html')
-
-        if found_profile == False:
+        cur.execute(f'SELECT name FROM users WHERE user_id = {message.from_user.id}')
+        
+        if not cur.fetchone():
             bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+
+        else:
+            cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {message.from_user.id}')
+            conn.commit()
+            bot.reply_to(message, f'Вы успешно изменили ссылку на вк на <code>{new_profile_vk}</code>.\n\n', parse_mode = 'html')
 
         cur.close()
         conn.close()
