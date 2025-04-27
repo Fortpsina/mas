@@ -197,24 +197,20 @@ class UserProfile:
     def __init__(self, user_id: int):
         conn = connect('database.sql')
         cur = conn.cursor()
-        cur.execute(f'SELECT name, pass, user_id, color, reserve_1 date FROM users WHERE user_id = {user_id}')
+        cur.execute(f'SELECT name, pass, user_id, color, reserve_1, date FROM users WHERE user_id = {user_id}')
 
         user_data = cur.fetchone()
 
         if user_data:
             self.exists = True
-            self.user_name = user_data[0]
-            self.user_vk = user_data[1]
-            self.user_id = user_data[2]
+            self.user_name  = user_data[0]
+            self.user_vk    = user_data[1]
+            self.user_id    = user_data[2]
             self.user_color = user_data[3]
             self.user_group = select_group_by_id(user_data[4])
-            self.user_reg = user_data[5]
+            self.user_reg   = user_data[5]
         else:
             self.exists = False
 
         cur.close()
         conn.close()
-    
-
-if __name__ == '__main__':
-    pass
