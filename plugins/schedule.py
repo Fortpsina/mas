@@ -12,9 +12,9 @@
 Планируется добавить интеграцию библиотеки и планов (тем докладов).'''
 
 from sqlite3 import connect
-from plugins.DayOfWeek import *
-from plugins.command_logger import select_group_by_id
-from plugins.clr import clr
+from .DayOfWeek import *
+from .command_logger import select_group_by_id
+from .clr import clr
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, time, timedelta
 
