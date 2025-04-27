@@ -90,7 +90,7 @@ def name_helper (name: str,
 
 
     return {'name': result,
-            'reply': f'Ваше имя: <code>{result}</code>.{issues}',
+            'reply': f'Принято имя: <code>{result}</code>.{issues}',
             'correct': True}
 
 
