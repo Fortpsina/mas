@@ -38,7 +38,10 @@ def color_chooser_markup() -> InlineKeyboardMarkup:
     return choose_color
 
 
-def profile_options_markup() -> InlineKeyboardMarkup:
+def profile_options_markup(own_profile: bool = True) -> InlineKeyboardMarkup | None:
+    if not own_profile:
+        return None
+    
     profile_settings_markup_name =  InlineKeyboardButton (text = 'Смена имени',  callback_data = 'profile change Name')
     profile_settings_markup_vk =    InlineKeyboardButton (text = 'Смена ВК',     callback_data = 'profile change VK')
     profile_settings_markup_group = InlineKeyboardButton (text = 'Смена группы', callback_data = 'profile change Group')
