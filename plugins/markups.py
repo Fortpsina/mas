@@ -4,8 +4,8 @@ def main_help_markup(admin_version: bool = True) -> InlineKeyboardMarkup:
     help_menu = InlineKeyboardMarkup(row_width = 1)
 
     help_menu.add(InlineKeyboardButton(text = 'Команды для расписания', callback_data = 'help_menu_schedule'))
-    help_menu.add(InlineKeyboardButton(text = 'Меню заданий', callback_data = 'help_menu_plan'))
     if admin_version:
+        help_menu.add(InlineKeyboardButton(text = 'Меню заданий', callback_data = 'help_menu_plan'))
         help_menu.add(InlineKeyboardButton(text = 'Административные команды', callback_data = 'help_menu_admin'))
     help_menu.add(InlineKeyboardButton(text = 'Прочие команды', callback_data = 'help_menu_other'))
 
