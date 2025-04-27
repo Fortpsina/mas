@@ -193,7 +193,6 @@ class User:
                 '____________________________________________\n'
             )
 
-class UserProfile:
     def __init__(self, user_id):
         conn = connect('database.sql')
         cur = conn.cursor()
@@ -202,12 +201,15 @@ class UserProfile:
         user_data = cur.fetchone()
 
         if user_data:
+            self.exist = True
             self.user_name = user_data[0]
             self.user_vk = user_data[1]
             self.user_id = user_data[2]
             self.user_color = user_data[3]
             self.user_group = select_group_by_id(user_data[4])
             self.user_reg = user_data[5]
+        else:
+            self.exist = False
 
         cur.close()
         conn.close()
