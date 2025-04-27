@@ -12,12 +12,11 @@
 Планируется добавить интеграцию библиотеки и планов (тем докладов).'''
 
 from sqlite3 import connect
-from DayOfWeek import DayOfWeek, call_DayOfWeek_with_string, adjust_date, UTC_OFFSET, dateDDMMYYYY, timeHHMMSS
-from command_logger import select_group_by_id
-from clr import clr
+from plugins.DayOfWeek import *
+from plugins.command_logger import select_group_by_id
+from plugins.clr import clr
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, time, timedelta
-from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 LESSON_1_START = time (0, 0)   # 00:00
 LESSON_1_END   = time (10, 9)  # 10:09
