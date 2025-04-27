@@ -102,24 +102,17 @@ def help(message):
 
 @bot.message_handler (commands = ['execute'])
 def run_cmd(message):
-    """
-    Запускает произвольный python-код, который указан в сообщении.
-    """
+    print(who_is_requestor(message = message)[0])
 
     if message.from_user.id in admin_id:
         try:
-            print(f'{message.from_user.full_name}: {message.text}')
             exec(message.text.replace('/execute ', '', 1))
 
         except Exception as ex:
             bot.reply_to (message, f'{ex}')
-            print (ex)
 
     else:
         bot.reply_to(message, 'Извините, вы не можете использовать эту команду.')
-
-messages_id = []
-users_who_got_the_plan = []
 
 
 @bot.message_handler (commands = ['fill'])
@@ -238,10 +231,11 @@ def schedule (message):
     bot.delete_message (message_id = temp_msg_notify.message_id, chat_id = message.chat.id)
 
 
-@bot.message_handler (commands = ['цвет', 'color'])
-def settings (message):
-    print (who_is_requestor (message) [0])
-    bot.send_message (message.chat.id, f'Выбор темы', reply_markup = color_chooser_markup())
+@bot.message_handler(commands = ['цвет', 'color'])
+def settings(message):
+    print(who_is_requestor(message)[0])
+    bot.send_message (message.chat.id, f'Выбор темы',
+                      reply_markup = color_chooser_markup())
 
 
 @bot.message_handler(commands=['lookup', 'dev'])
@@ -330,9 +324,9 @@ def lookup(message):
         bot.send_message(message.chat.id, 'id - проверка ID\nmessage - состав message JSON\nmessage None - состав message для чтения в консоли\nrequestor - проверка функции who_is_the_requestor\nusers - проверка database => users')
 
 
-@bot.message_handler (commands = ['profile', 'prof', 'профиль', 'проф'])
-def interactive_profile (message):
-    print (who_is_requestor(message)[0])
+@bot.message_handler(commands = ['profile', 'prof', 'профиль', 'проф'])
+def interactive_profile(message):
+    print(who_is_requestor(message)[0])
 
     try:
         if len (message.text.split()) == 1 or message.text.split()[1] in ('view', 'посмотреть', 'глянуть', 'check', 'c', 'v', 'me', 'my', 'мой', 'я', 'моя', 'cheq', 'чек'):
