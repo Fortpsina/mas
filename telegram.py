@@ -1377,13 +1377,11 @@ def button_menu_universal_func(call):
 
 <b>/color</b> - меню установки цветовой темы.
 
-<b>/anon</b> - анонимное сообщение администратору.
-
 <b>/profile</b> - взаимодействие с профилем.
 
 <b>/exam</b> - ответы на вопросы к экзаменам.
 
-<b>/feedback</b> - отзывы на преподавателей.''',
+<b>/feedback</b> - отзывы.''',
             parse_mode = 'html', reply_markup = back_to_help_menu)
 
     elif call.data == 'back_to_help_menu':
