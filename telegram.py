@@ -2,7 +2,7 @@ import sqlite3
 
 import telebot
 from telebot import types
-from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji
 
 import datetime
 from datetime import timedelta
@@ -16,87 +16,52 @@ from plugins.feedbacks import *
 from plugins.schedule import *
 from plugins.markups import *
 from plugins.name_checker import name_helper
+from plugins.langs import *
 
 from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
 
 from config import *
 
+
 PROJECT_ROOT = Path(__file__).parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-name = 'NoData'
-conditions = 'https://example.com'
-user_group_to_set = 1
-expect_geo = []
-
 
 @bot.message_handler(commands=['start', 'reg', 'register'])
 def start(message):
-    if mas == False and message.text == '/start':
-        bot.reply_to(message, f'Бот использует тестовую сборку.\nДля регистрации используйте <b>/register</b>.', parse_mode = 'html')
+    if CONTROL_USERS_TABLE:
+        create_table()
+
+    if UserProfile(message.from_user.id).exists:
+        bot.reply_to(message, f'Вы уже зарегестрированы в боте.')
         return
 
-    conn = sqlite3.connect('database.sql')
-    cur = conn.cursor()
-
-    cur.execute('CREATE TABLE IF NOT EXISTS users (id int auto_increment primary key, name varchar(50), pass varshar(50), user_id INTEGER, color varshar(50), social_cred INTEGER, vk_id INTEGER, reserve_1 INTEGER, reserve_2 INTEGER, reserve_3 varshar(50), date varshar(50), banned varshar(50), mailing varshar(50), status varshar(50))')
-    conn.commit()
-
-    cur.execute('SELECT user_id FROM users')
-
-    if message.from_user.id in cur.fetchall():
-        bot.reply_to(message, 'Вы уже зарегестрированы в боте.')
-        return
-
-    bot.send_message(message.chat.id, '''<b>Добро пожаловать.</b>
-
-Данный бот был создан для улучшенея опыта работы студенческих групп и автоматизации бытовых действий. Для начала вам нужно пройти быстрый процесс регистрации.
-
-<b>Шаг 1/3</b>: Укажите своё имя на киррилице. Можно с фамилией. Главное, чтобы было ясно, что вы - это вы.''', parse_mode='html')
-
-    cur.close()
-    conn.close()
-
+    bot.send_message(message.chat.id, REG_1, parse_mode='html')
+    User(message.from_user.id, name = message.from_user.full_name).register()
     bot.register_next_step_handler(message, user_name)
 
 def user_name(message):
-    global name
-    name = message.text.strip()
-    if len(name) > 48:
-        bot.reply_to(message, 'Слишком длинное имя. Укажите не более 48-и символов.')
+    _name_params = name_helper(message.text.strip())
+    
+    if not _name_params['correct']:
+        bot.reply_to(message, _name_params['reply'], parse_mode='html')
         return
-    bot.send_message(message.chat.id, '''Регистрируясь, вы принимаете <a href = "https:example.com">условия пользования ботом</a>:
-
-1. Все возможности в боте предоставляются "как есть". Разработчик бота и его администраторы не несут никаких обязательств по администрированию бота.
-2. Все действия пользователей, кроме анонимных писем, могут записываться в консоль с целью исправления багов и обеспечения безопасности пользователей.
-3. Блокируя бота, вы добровольно отказываетесь от получения важной информации, которая через него может отправляться.
-4. Используя бота, вы и только вы несёте ответсвенность за свои действия. Запрещено искать уязвимости бота, пытаться дестабилизировать его хостинг и совершать с ним любые аморальные действия. В качестве наказания за нарушения правил может применяться блокировка определённых команд для пользователя.
-
-<b>Шаг 2/3:</b> Если вы ознакомлены и согласны с этими условиями, отправьте в чат "<code>Ознакомлен, согласен</code>" или "<code>Ознакомлена, согласна</code>".''', parse_mode='html')
+    
+    emoji = "🔥" if "удалены" not in _name_params['reply'].lower() else "🤡"
+    
+    bot.set_message_reaction(chat_id=message.chat.id, message_id=message.id,
+        reaction=[ReactionTypeEmoji(emoji=emoji)])
+    
+    User(message.from_user.id).edit('name', _name_params['name'])
+    
+    bot.send_message(message.chat.id, REG_2, parse_mode='html')
     bot.register_next_step_handler(message, user_pass)
 
-    bot.send_message(428192863, f'{message.from_user.full_name} регестрируется в боте.\nID этого пользователя: {message.from_user.id}')
-
 def user_pass(message):
-    conn = sqlite3.connect('database.sql')
-    cur = conn.cursor()
-
-    User(message.from_user.id, name = name, conditions = conditions).register()
-
-    cur.close()
-    conn.close()
-
-    bot.send_message (message.chat.id,
-        '<b>Данные сохранены!</b>\n' +
-        '<i>Теперь вы можете использовать весь функционал бота. ' +
-        'Выберете "Помощь по всем командам" в Меню или используйте <code>/help</code>, ' +
-        'чтобы получить справку по командам.</i>\n\n' +
-        '<b>Шаг 3/3:</b> Выберете свою группу из списка.',
-        parse_mode = 'html',
-        reply_markup = group_chooser_markup()
-    )
+    User(message.from_user.id).edit('pass', message.text.strip())
+    bot.send_message (message.chat.id, REG_3, parse_mode = 'html', reply_markup = group_chooser_markup())
 
 
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
@@ -795,8 +760,8 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
 
     index_of_task = int (calldata.split()[2])
 
-    if len (message.text) > 3400:
-        bot.reply_to(message, f'Максимальная длина ответа: 3400 символов. <i>Ваша длина: <b>{len(message.text)}</b>.</i>\n\n<i>Постарайтесь сократить решение и повторить попытку.</i>', parse_mode = 'html')
+    if len (message.text) > 3600:
+        bot.reply_to(message, f'Максимальная длина ответа: 3600 символов. <i>Ваша длина: <b>{len(message.text)}</b>.</i>\n\n<i>Постарайтесь сократить решение и повторить попытку.</i>', parse_mode = 'html')
         return
 
     try:
