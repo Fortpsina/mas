@@ -84,6 +84,8 @@ def select_group_by_id (id: int) -> str:
     for group in groups:
         if group['id'] == id:
             return group['name']
+    
+    return "Группа не определена."
         
 def select_group_by_name (name: str) -> int:
     groups = load(open('groups.json', 'r'))
@@ -92,5 +94,4 @@ def select_group_by_name (name: str) -> int:
         if group['name'] == name:
             return group['id']
         
-if __name__ =='__main__':
-    a = GeoRequest()
+    return 0
