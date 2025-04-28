@@ -279,34 +279,33 @@ def lookup(message):
 @bot.message_handler(commands = ['profile', 'prof', 'профиль'])
 def interactive_profile(message):
     print(who_is_requestor(message)[0])
+    
     cmd = message.text.split()
+    _id = message.from_user.id
+    _own_prifile = True
 
-    if len(cmd) == 1 or cmd[1] in ('view', 'check', 'v') or cmd[1].isdigit():
+    if len(cmd) == 3 and cmd[2].isdigit():
+        _id = int(cmd[2])
+        _own_prifile = False
+    elif len(cmd) == 2 and cmd[1].isdigit():
+        _id = int(cmd[1])
+        _own_prifile = False
 
-        _id = message.from_user.id
-        _own_prifile = True
-        if len(cmd) == 3 and cmd[2].isdigit():
-            _id = int(cmd[2])
-            _own_prifile = False
-        elif len(cmd) == 2 and cmd[1].isdigit():
-            _id = int(cmd[1])
-            _own_prifile = False
+    profile = UserProfile(_id)
 
-        profile = UserProfile(_id)
+    if not profile.exists:
+        bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+        return
+    
+    _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
+    _to_reply += f"  Группа: <code>{profile.user_group}</code>\n"
+    _to_reply += f"  ВК: <code>{profile.user_vk}</code>\n"
+    _to_reply += f"  ID: <code>{profile.user_id}</code>\n"
+    _to_reply += f"  Цвет: <code>{profile.user_color}</code>\n"
+    _to_reply += f"  Регистрация: <code>{profile.user_reg}</code>\n"
 
-        if not profile.exists:
-            bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
-            return
-        
-        _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
-        _to_reply += f"  Группа: <code>{profile.user_group}</code>\n"
-        _to_reply += f"  ВК: <code>{profile.user_vk}</code>\n"
-        _to_reply += f"  ID: <code>{profile.user_id}</code>\n"
-        _to_reply += f"  Цвет: <code>{profile.user_color}</code>\n"
-        _to_reply += f"  Регистрация: <code>{profile.user_reg}</code>\n"
-
-        bot.reply_to(message, _to_reply, parse_mode = 'html',
-                     reply_markup = profile_options_markup(_own_prifile, message.from_user.id in admin_id))             
+    bot.reply_to(message, _to_reply, parse_mode = 'html',
+                    reply_markup = profile_options_markup(_own_prifile, message.from_user.id in admin_id))
 
 def set_new_profile_name (message):
     profile = UserProfile(message.from_user.id)
