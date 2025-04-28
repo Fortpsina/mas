@@ -82,12 +82,10 @@ class User:
         conn = connect('database.sql')
         cur = conn.cursor()
 
-        try:
-            cur.execute(f'SELECT * FROM users WHERE user_id = {tgid}')
-            user = cur.fetchall()[0]
-            # Определяем первый элемент списка, полученного из БД как найденного пользователя
-            # По идее, второй элемент в списке возможен только если такой есть в бд, а взяться ему там неоткуда
-
+        cur.execute(f'SELECT * FROM users WHERE user_id = {tgid}')
+        user = cur.fetchone()
+            
+        if user:
             self.name = user[1]
             self.tgid = user[3]
             self.vk_link = user[2]
@@ -96,23 +94,8 @@ class User:
             self.conditions = user[6]
             self.group = sel_group (user[7])
 
-
-        except OperationalError and IndexError:
-            self.name = name
-            self.tgid = tgid
-            self.vk_link = vk_link
-            self.color = color
-            self.reg = reg
-            self.conditions = conditions
-            self.group = group
-            self.user_found = False
-
-        else:
-            self.user_found = True
-
-        finally:
-            cur.close()
-            conn.close()
+        cur.close()
+        conn.close()
 
     def register (
             self,
