@@ -1,199 +1,154 @@
-from sqlite3 import connect, OperationalError
+from sqlite3 import connect
 from datetime import datetime
-from json import load, JSONDecodeError
-from plugins.command_logger import select_group_by_id
-import logging
+from threading import Lock
 
-def sel_group (group_id: int = 1) -> str:
-    '''
-    Проверяет "groups.json" - проверяет ID группы и превращает его в строку.\n
-    По сути, это можно было и через init сделать, но мне было лень переделывать структуру БД, поэтому так сложно //shrug
-    '''
-    try:
-        groups = load(open('groups.json', 'r', encoding='utf-8'))
+USERS_STRUCT = """CREATE TABLE IF NOT EXISTS Users (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    vk_link TEXT,
+    user_id INTEGER,
+    color TEXT,
+    level INTEGER,
+    conditions TEXT,
+    hs_name TEXT,
+    hs_struct TEXT,
+    group_name TEXT,
+    registration_date DATE,
+    rights_level INTEGER,
+    papers TEXT)"""
 
-        for selected_group in groups:
-            if selected_group['id'] == group_id:
-                return selected_group['name']
+HS_STRUCT = """
+"""
 
-    except JSONDecodeError and IndexError:
-        return 'Группа неизвестна'
+GROUP_STRUCT = """
+"""
 
-def create_table (name: str = 'database') -> None:
-    '''
-    Проверяет наличие таблицы users и создаёт её при условии отсутствия.\n
-    Применять когда есть шанс, что таблицы нет - позволяет избежать ошибку.
-    '''
 
-    conn = connect(f'{name}.sql')
+def create_table(table_type: str, db: str = 'database') -> None:
+    types = {
+        "users": USERS_STRUCT,
+        "hs": HS_STRUCT,
+        "group": GROUP_STRUCT
+    }
+    assert table_type in types.keys(), "Указана несуществующая таблица."
+
+    conn = connect(f'{db}.sql')
     cur = conn.cursor()
 
-    cur.execute(
-        'CREATE TABLE IF NOT EXISTS users' +
-        '(id int auto_increment primary key, ' +
-        'name varchar(50), ' +
-        'pass varshar(50), ' +
-        'user_id INTEGER, ' +
-        'color varshar(50), ' +
-        'social_cred INTEGER, ' +
-        'vk_id INTEGER, ' +
-        'reserve_1 INTEGER, ' +
-        'reserve_2 INTEGER, ' +
-        'reserve_3 varshar(50), ' +
-        'date varshar(50), ' +
-        'banned varshar(50), ' +
-        'mailing varshar(50), ' +
-        'status varshar(50) ' +
-        ')'
-    )
+    cur.execute(types[table_type])
     conn.commit()
 
     cur.close()
     conn.close()
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.FileHandler('logs.log'))
-
-
-class User:
-    '''
-    Выдаёт пользователя по ID.\n
-    ------------------------------
-    Первый аргумент - ID Telegram, по нему пользователь и ищется.\n
-    Пример: User(428192863).name - выдать имя юзера по ID.\n
-    ------------------------------
-    Доступные методы:\n
-    User().register()\n
-    User().edit()
-    '''
-
-    def __init__ (
-            self,
-            tgid: int = 0,
-            name: str = 'User',
-            vk_link: str = 'https://vk.com/example',
-            color: str = 'default',
-            reg: str = '2020-01-01 00:00:00',
-            conditions: str = 'Не ознакомлен',
-            group = 1,
-            *args, **kwargs
-    ):
-        conn = connect('database.sql')
-        cur = conn.cursor()
-
-        cur.execute(f'SELECT * FROM users WHERE user_id = {tgid}')
-        user = cur.fetchone()
-            
-        if user:
-            self.name = user[1]
-            self.tgid = user[3]
-            self.vk_link = user[2]
-            self.color = user[4]
-            self.reg = user[10][:19]
-            self.conditions = user[6]
-            self.group = sel_group (user[7])
-
-        cur.close()
-        conn.close()
-
-    def register (
-            self,
-            date: str = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    ) -> None:
-        '''
-        Метод register создаёт профиль пользователя на основе имеющихся аргументов.\n
-        Пример: User(428192863, "Андрей").register(2022.02.21 12:00:00)\n
-        Если не вписать дату, определит её автоматически.\n
-        '''
-
-        conn = connect('database.sql')
-        cur = conn.cursor()
-
-        cur.execute(
-            'INSERT INTO users ' +
-            '(name, pass, user_id, color, social_cred, vk_id, reserve_1, reserve_2, reserve_3, date, banned, mailing, status) ' +
-            ' VALUES (' +
-            f'"{self.name}", ' +            # name          (Имя пользователя)
-            f'"{self.vk_link}", ' +         # pass          (Ссылка для вк)
-            f'"{self.tgid}", ' +            # user_id       (Telegram ID)
-            f'"{self.color}", ' +           # color         (Цвет)
-            f'"{100}", ' +                  # social_cred   (Соц. рейтинг)
-            f'"{self.conditions}", ' +      # vk_id         (Условия бота)
-            f'"{self.group}", ' +           # reserve_1     (ID группы)
-            f'"{2}", ' +                    # reserve_2     (запасная)
-            f'"reserve", ' +                # reserve_3     (запасная)
-            f'"{date}", ' +                 # date          (Время)
-            f'"No", ' +                 # banned        (запасная)
-            f'"Yes", ' +                # mailing       (запасная)
-            f'"User" ' +                # status        (тип объекта)
-            ')'
-        )
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        logger.info(
-            f'{date}_________________________\n' +
-            f'Профиль {self.name} был создан.\n' +
-            f' -> id = {self.tgid}\n' +
-            f' -> vk_link = {self.vk_link}\n'+
-            '____________________________________________\n'
-        )
-
-    def edit (
-            self,
-            column,
-            new_value,
-            initiated_by: str = 'Консоль',
-            date: str = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    ) -> None:
-        '''
-        Метод edit обновляет данные пользователя.\n
-        Указывать колонну, новую информацию и инициатора (последнее - необязательно)\n
-        Пример: User(428192863).edit('color', 'random')
-        '''
-        conn = connect('database.sql')
-        cur = conn.cursor()
-
-        cur.execute(f'SELECT {column} FROM users WHERE user_id = {self.tgid}')
-        old_values = cur.fetchall()
-
-        cur.execute(f'UPDATE users SET {column} = "{new_value}" WHERE user_id = {self.tgid}')
-        conn.commit()
-
-        cur.close()
-        conn.close()
-
-        for value in old_values:
-            logger.info(
-                f'{date}_________________________\n' +
-                f'Профиль {self.name} был отредактирован.\n' +
-                f' -> Старое значение {column}: {value}\n' +
-                f' -> Новое значение {column}: {new_value}\n' +
-                f' -> Изменил: {initiated_by}\n'+
-                '____________________________________________\n'
-            )
 
 class UserProfile:
     def __init__(self, user_id: int):
-        conn = connect('database.sql')
-        cur = conn.cursor()
-        cur.execute(f'SELECT name, pass, user_id, color, reserve_1, date FROM users WHERE user_id = {user_id}')
+        self.conn = connect('database.sql', check_same_thread=False)
+        self.cur = self.conn.cursor()
+        self.cur.execute(f'SELECT name, vk_link, color, group_name, registration_date FROM users WHERE user_id = {user_id}')
 
-        user_data = cur.fetchone()
+        user_data = self.cur.fetchone()
+        self.user_id = user_id
 
         if user_data:
             self.exists = True
             self.user_name  = user_data[0]
             self.user_vk    = user_data[1]
-            self.user_id    = user_data[2]
-            self.user_color = user_data[3]
-            self.user_group = select_group_by_id(user_data[4])
-            self.user_reg   = user_data[5]
+            self.user_color = user_data[2]
+            self.user_group = user_data[3]
+            self.user_reg   = user_data[4]
         else:
             self.exists = False
 
-        cur.close()
-        conn.close()
+    def update(self, column: str, new_value: str | int) -> str:
+        _allowed = [word.split()[0] for word in USERS_STRUCT.splitlines()[1:]]
+        if column not in _allowed:
+            return f"Неизвестная колонна. Доступные значения: {_allowed}"
+        
+        db_lock = Lock()
+        with db_lock:
+            self.cur.execute(f'SELECT ? FROM users WHERE user_id = ?', (column, self.user_id))
+            old_value = self.cur.fetchone()[0] or "?"
+
+            self.cur.execute(f'UPDATE users SET {column} = ? WHERE user_id = ?', (new_value, self.user_id))
+            self.conn.commit()
+
+            return f"Значение изменено с {old_value} на {new_value}."
+        
+    def delete(self, physically: bool = False) -> str:
+        if not self.exists:
+            return "Пользователь с таким ID не найден."
+        
+        b_vklink = f'  Страница ВК: <code>{self.user_vk}</code>'
+        b_tgid = f'  ID: <code>{self.user_id}</code>'
+        b_color = f'  Цвет: <code>{self.user_color}</code>'
+        b_reg = f'  Регистрация: <code>{self.user_reg}</code>'
+        
+        if physically:
+            self.cur.execute(f'DELETE FROM users WHERE user_id = {self.user_id}')
+            self.conn.commit()
+            return f'Вы физически (безвозвратно) удалили профиль пользователя {self.user_name}:\n{b_vklink}\n{b_tgid}\n{b_color}\n{b_reg}'
+
+        else:
+            self.cur.execute(f'UPDATE users SET name = "Удалённый пользователь (Ранее: {self.user_name}, ID: {self.user_id})" WHERE user_id = {self.user_id}')
+            self.cur.execute(f'UPDATE users SET user_id = 0 WHERE user_id = {self.user_id}')
+            self.conn.commit()
+            return f'Вы отключили профиль пользователя {self.user_name}:\n{b_vklink}\n{b_tgid}\n{b_color}\n{b_reg}'
+
+    def __del__(self):
+        self.cur.close()
+        self.conn.close()
+
+
+def register_user(message, **custom_data) -> None:
+    conn = connect('database.sql')
+    cur = conn.cursor()
+
+    _name = custom_data.get("name",       message.from_user.full_name)
+    _vk   = custom_data.get("vk_link",    "https://vk.com/example")
+    _id   = custom_data.get("user_id",    message.from_user.id)
+    _clr  = custom_data.get("color",      "default")
+    _lvl  = custom_data.get("level",      100)
+    _cnds = custom_data.get("conditions", "Н/Д")
+    _hs   = custom_data.get("hs_name",    "УЗ не указано")
+    _st   = custom_data.get("hs_struct",  "Структура УЗ не указана")
+    _gr   = custom_data.get("group_name", "Группа не указана")
+    _date = custom_data.get("reg_date",   datetime.now().strftime("%d.%m.%Y %H:%M:%S"))
+    _rl   = custom_data.get("rights",     1)
+    _pprs = custom_data.get("papers",     "")
+
+    cur.execute(
+        'INSERT INTO Users (name, vk_link, user_id, color, level, conditions, hs_name, hs_struct, group_name, registration_date, rights_level, papers) ' +
+        f'VALUES ("{_name}", "{_vk}", {_id}, "{_clr}", {_lvl}, "{_cnds}", "{_hs}", "{_st}", "{_gr}", "{_date}", {_rl}, "{_pprs}")')
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+
+def users_list(db: str = 'database') -> str:
+    conn = connect(f'{db}.sql')
+    cur = conn.cursor()
+
+    chunk_size = 3800
+    _to_reply = ''
+
+    cur.execute('SELECT name, user_id FROM users')
+    for el in cur.fetchall():
+        _name = el[0]
+        _id = el[1]
+        _to_reply += f"<b>{_name}</b>: <code>{_id}</code>\n"
+
+    cur.close()
+    conn.close()
+
+    if len(_to_reply) < chunk_size:
+        return _to_reply
+
+    else:
+        return _to_reply[0:chunk_size] + "..."
+
+
+if __name__ == '__main__':
+    print(UserProfile().update("kek", 123))
