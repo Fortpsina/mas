@@ -30,11 +30,6 @@ def name_helper (name: str,
     1) name: str = итоговое имя;\n
     2) reply: str = ответ для пользователя;\n
     3) correct: bool = обработан ли ник.'''
-    
-    if len (name) > 100:
-        return {'name': None,
-                'reply': f'Имя должно быть короче {MAX_NAME_LENGHT + 1} символов.',
-                'correct': False}
 
     name_letters = []
     name_type = None
