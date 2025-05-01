@@ -9,19 +9,20 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler('logs.log'))
 
 
-def who_is_requestor (message, group: int = 1, date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")):
-
+def who_is_requestor (message):
     requestor = message.from_user.full_name
+    date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    group = None
 
     conn = connect('database.sql')
     cur = conn.cursor()
 
-    cur.execute(f'SELECT name, user_id, reserve_1 FROM users WHERE user_id = {message.from_user.id}')
-    user = cur.fetchall()
-    if len(user) > 0:
-        user = user[0]
+    cur.execute(f'SELECT name, group_name FROM users WHERE user_id = {message.from_user.id}')
+    user = cur.fetchone()
+
+    if user:
         requestor = user[0]
-        group = user[2]
+        group = user[1]
 
     cur.close()
     conn.close()
@@ -30,13 +31,12 @@ def who_is_requestor (message, group: int = 1, date = datetime.now().strftime("%
             f'{date}_________________________\n' +
             f'{requestor} использовал следующую команду:\n' +
             f' -> {message.text}\n' +
-            '____________________________________________\n'
-    )
+            '____________________________________________\n')
 
     if message.chat.type == 'group':
         requestor = f'{message.chat.title} | {requestor}'
 
-    return (f'{requestor}: {message.text}', group)
+    return (f'{requestor}: {message.text}', group, requestor)
 
 def select_color_by_id (id):
     conn = connect('database.sql')
@@ -95,3 +95,6 @@ def select_group_by_name (name: str) -> int:
             return group['id']
         
     return 0
+        
+if __name__ =='__main__':
+    a = GeoRequest()
