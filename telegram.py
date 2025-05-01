@@ -15,7 +15,7 @@ from plugins.command_logger import *
 from plugins.feedbacks import *
 from plugins.schedule import *
 from plugins.markups import *
-from plugins.name_checker import name_helper
+from plugins.name_checker import *
 from plugins.langs import *
 
 from plugins.DayOfWeek import is_date
@@ -32,21 +32,23 @@ if str(PROJECT_ROOT) not in sys.path:
 @bot.message_handler(commands=['start', 'reg', 'register'])
 def start(message):
     if CONTROL_USERS_TABLE:
-        create_table()
+        create_table("users")
 
-    if UserProfile(message.from_user.id).exists:
+    new_user = UserProfile(message.from_user.id)
+    if new_user.exists:
         bot.reply_to(message, f'Вы уже зарегестрированы в боте.')
         return
 
     bot.send_message(message.chat.id, REG_1, parse_mode='html')
-    User(message.from_user.id, name = message.from_user.full_name).register()
-    bot.register_next_step_handler(message, user_name)
+    register_user(message)
+    bot.register_next_step_handler(message, user_name, new_user)
 
-def user_name(message):
+def user_name(message, new_user: UserProfile):
     _name_params = name_helper(message.text.strip())
     
-    if not _name_params['correct']:
+    if not _name_params['correct'] and CONTROL_NAMES_DURING_REG:
         bot.reply_to(message, _name_params['reply'], parse_mode='html')
+        bot.reply_to(message, 'Данный ник не может быть принят, но я всё равно Вас зарегестрирую. Чтобы поменять свои данные, воспользуйтесь /profile')
         return
     
     emoji = "🔥" if "удалены" not in _name_params['reply'].lower() else "🤡"
@@ -54,14 +56,14 @@ def user_name(message):
     bot.set_message_reaction(chat_id=message.chat.id, message_id=message.id,
         reaction=[ReactionTypeEmoji(emoji=emoji)])
     
-    User(message.from_user.id).edit('name', _name_params['name'])
+    new_user.update('name', _name_params['name'])
     
     bot.send_message(message.chat.id, REG_2, parse_mode='html')
-    bot.register_next_step_handler(message, user_pass)
+    bot.register_next_step_handler(message, user_pass, new_user)
 
-def user_pass(message):
-    User(message.from_user.id).edit('pass', message.text.strip())
-    bot.send_message (message.chat.id, REG_3, parse_mode = 'html', reply_markup = group_chooser_markup())
+def user_pass(message, new_user):
+    new_user.update('conditions', message.text.strip())
+    bot.send_message (message.chat.id, REG_3, parse_mode = 'html', reply_markup = select_hs_markup())
 
 
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
@@ -69,21 +71,6 @@ def help(message):
     print(who_is_requestor(message = message)[0])
     bot.reply_to(message, '''<b>Получение справок по использованию команд:</b>''',
                  parse_mode='html', reply_markup = main_help_markup(message.from_user.id in admin_id))
-
-
-@bot.message_handler (commands = ['execute'])
-def run_cmd(message):
-    print(who_is_requestor(message = message)[0])
-
-    if message.from_user.id in admin_id:
-        try:
-            exec(message.text.replace('/execute ', '', 1))
-
-        except Exception as ex:
-            bot.reply_to (message, f'{ex}')
-
-    else:
-        bot.reply_to(message, 'Извините, вы не можете использовать эту команду.')
 
 
 @bot.message_handler (commands = ['fill'])
@@ -126,6 +113,7 @@ def attend (message):
 
     bot.reply_to (message, text = HANDLING_MSG, reply_markup = keyboard, parse_mode = 'html')
 
+
 @bot.message_handler(content_types=['location'])
 def location_handler(message):
     req = GeoRequest(message)
@@ -142,6 +130,7 @@ def location_handler(message):
         details_geo.add(InlineKeyboardButton(text = "Подробнее", callback_data = f"geo details {req.longitude} {req.latitude}"))
         bot.reply_to(message, 'В отметке отказано, вы не на паре.', reply_markup = details_geo)
 
+
 @bot.message_handler (commands = ['attendance'])
 def attendance (message):
     req = who_is_requestor(message)
@@ -151,8 +140,7 @@ def attendance (message):
 
 @bot.message_handler (commands = ['schedule', 's', 'с', 'расписание', 'р'])
 def schedule (message):
-    '''Отправка расписания для одного участника группы.'''
-
+    print(who_is_requestor(message)[0])
     week_modifier = 0
     lesson_date = datetime.now().strftime('%d.%m.20%y')
 
@@ -164,20 +152,14 @@ def schedule (message):
         elif is_date (message.text.split()[1]):
             lesson_date = message.text.split()[1]
         elif message.text.split() [1] == 'create_table':
-            if len (message.text.split()) > 2:
-                Schedule.create_schedule (message.text.split () [2])
-                bot.reply_to (message,
-                    f'Вы создали таблицу расписания, используя неродное название ({message.text.split () [2]})\n' +
-                    'Вы не сможете использовать готовые методы Schedule по отношению к этой таблице.')
-            else:
-                Schedule.create_schedule ()
-                bot.reply_to (message, 'Вы создали таблицу расписания.')
+            Schedule.create_schedule()
+            bot.reply_to(message, 'Вы создали таблицу расписания.')
 
     temp_msg_notify = bot.reply_to (message, 'Готовлю для вас ваше расписание...')
 
     render_schedule = Schedule (
         lesson_date = lesson_date,
-        group_id = who_is_requestor (message) [1]
+        group_id = who_is_requestor(message)[1]
     ).render (color = select_color_by_id (message.chat.id), week_modifier = week_modifier * 7)
 
     media_group = []
@@ -194,22 +176,17 @@ def schedule (message):
         else:
             media_group.append(types.InputMediaPhoto(open(photo, 'rb')))
 
-    bot.send_media_group (
-        message.chat.id,
-        media = media_group,
-        reply_to_message_id = message.id)
-
+    bot.send_media_group (message.chat.id, media = media_group, reply_to_message_id = message.id)
     bot.delete_message (message_id = temp_msg_notify.message_id, chat_id = message.chat.id)
 
 
 @bot.message_handler(commands = ['цвет', 'color'])
 def settings(message):
     print(who_is_requestor(message)[0])
-    bot.send_message (message.chat.id, f'Выбор темы',
-                      reply_markup = color_chooser_markup())
+    bot.send_message (message.chat.id, f'Выбор темы', reply_markup = color_chooser_markup())
 
 
-@bot.message_handler(commands=['lookup', 'dev'])
+@bot.message_handler(commands=['dev'])
 def lookup(message):
     print (who_is_requestor(message)[0])
     command = message.text.split()
@@ -217,69 +194,50 @@ def lookup(message):
     if len(command) >= 2:
 
         if message.from_user.id in admin_id and command[1] == 'users':
+            bot.reply_to(message, users_list(), parse_mode='html')
 
-            conn = sqlite3.connect('database.sql')
-            cur = conn.cursor()
-            cur.execute('SELECT * FROM users')
-            users = cur.fetchall()
-            counter_users = 1
-
-            if len(command) > 3 and command[2] == 'delete':
-                deleted_name = None
-                for el in users:
-                    if str (el[3]) == command[3]:
-                        deleted_name = el[1]
-                        cur.execute(f'UPDATE users SET name = "Удалённый пользователь (Ранее: {deleted_name}, ID: {command[3]})" WHERE user_id = {el[3]}')
-                        cur.execute(f'UPDATE users SET user_id = 0 WHERE user_id = {el[3]}')
-                        conn.commit()
-
-                        b_name = f'Имя: <code>{el[1]}</code>'
-                        b_vklink = f'  Страница ВК: <code>{el[2]}</code>'
-                        b_tgid = f'  ID: <code>{el[3]}</code>'
-                        b_color = f'  Цвет: <code>{el[4]}</code>'
-                        b_soc_cred = f'  Соц. рейтинг: <code>{el[5]}</code>'
-                        b_conditions = f'  Условия пользования: <code>{el[6]}</code>'
-                        b_reg = f'  Регистрация: <code>{el[10][:19]}</code>'
-
-                        bot.send_message(message.chat.id,
-                            f'Вы удалили данные: {b_name}\n{b_vklink}\n{b_tgid}\n{b_color}\n{b_soc_cred}\n{b_conditions}\n  ЗП 1: <code>{el[7]}</code>\n  ЗП 2: <code>{el[8]}</code>\n  ЗП 3: <code>{el[9]}</code>\n{b_reg}\n  Забанен: <code>{el[11]}</code>\n  Рассылка: <code>{el[12]}</code>\n  Статус: <code>{el[13]}</code>\n\n',
-                            parse_mode = 'html')
-
-            else:
-                for el in users:
-                    b_name = f'Имя: <code>{el[1]}</code>'
-                    b_vklink = f'  Страница ВК: <code>{el[2]}</code>'
-                    b_tgid = f'  ID: <code>{el[3]}</code>'
-                    b_color = f'  Цвет: <code>{el[4]}</code>'
-                    b_soc_cred = f'  Соц. рейтинг: <code>{el[5]}</code>'
-                    b_conditions = f'  Условия пользования: <code>{el[6]}</code>'
-                    b_reg = f'  Регистрация: <code>{el[10][:19]}</code>'
-
-                    bot.send_message(message.chat.id,
-                        f'{b_name}\n{b_vklink}\n{b_tgid}\n{b_color}\n{b_soc_cred}\n{b_conditions}\n  ЗП 1: <code>{el[7]}</code>\n  ЗП 2: <code>{el[8]}</code>\n  ЗП 3: <code>{el[9]}</code>\n{b_reg}\n  Забанен: <code>{el[11]}</code>\n  Рассылка: <code>{el[12]}</code>\n  Статус: <code>{el[13]}</code>\n\n',
-                        parse_mode = 'html')
-
-                    counter_users += 1
-
-            cur.close()
-            conn.close()
+        elif message.from_user.id in admin_id and len(command) > 2 and command[1] == 'delete':
+            bot.reply_to(message, UserProfile(int(command[2])).delete(len(command)>3 and command[3]=="physically"), parse_mode='html')
+            return
 
         elif command[1] == 'id':
-            bot.reply_to(message, f'Ваш ID: <b>{message.from_user.id}</b>', parse_mode='html')
+            bot.reply_to(message, f'<code>{message.from_user.id}</code>', parse_mode='html')
 
         elif command[1] == 'message':
-            test_message = message
-            pprint.pprint(test_message, width=40)
-            bot.send_message(message.chat.id, message if len(command) != 3 and command[2] != 'None' else '...')
+            bot.send_message(message.chat.id, message)
 
+        elif message.from_user.id in admin_id and command[1] == 'markup':
+            _possible_markups = {'main_help_markup': main_help_markup,
+                                 'back_to_main_help_markup': back_to_main_help_markup,
+                                 'color_chooser_markup': color_chooser_markup,
+                                 'profile_options_markup': profile_options_markup,
+                                 'group_chooser_markup': group_chooser_markup,
+                                 'select_hs_markup': select_hs_markup,
+                                 'feedback_markup': feedback_markup}
+            
+            possibles = '\n'.join([f"<code>{m}</code>" for m in _possible_markups.keys()])
+
+            if len(command) < 3:
+                bot.reply_to(message, text=POSSIBLE_KEYBOARDS+possibles, parse_mode='html')
+                return
+            
+            bot.send_message(message.chat.id, PREVIEW_KEYBOARDS, reply_markup=_possible_markups.get(command[2])())
+
+        elif message.from_user.id in admin_id and command[1] == "execute":
+            try:
+                exec(message.text.replace('/dev execute ', '', 1))
+
+            except Exception as _exception:
+                bot.reply_to(message, f'{_exception}')
+    
     else:
-        bot.send_message(message.chat.id, 'id - проверка ID\nmessage - состав message JSON\nmessage None - состав message для чтения в консоли\nusers - проверка database => users')
+        bot.reply_to(message, DEV_HELP, parse_mode='html')
 
 
 @bot.message_handler(commands = ['profile', 'prof', 'профиль'])
 def interactive_profile(message):
     print(who_is_requestor(message)[0])
-    
+
     cmd = message.text.split()
     _id = message.from_user.id
     _own_prifile = True
@@ -294,7 +252,7 @@ def interactive_profile(message):
     profile = UserProfile(_id)
 
     if not profile.exists:
-        bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+        bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
         return
     
     _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
@@ -311,7 +269,7 @@ def set_new_profile_name (message):
     profile = UserProfile(message.from_user.id)
 
     if not profile.exists:
-        bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+        bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
         return
 
     _new_name = name_helper(message.text.strip())
@@ -351,7 +309,7 @@ def set_new_profile_vk (message):
         cur.execute(f'SELECT name FROM users WHERE user_id = {message.from_user.id}')
         
         if not cur.fetchone():
-            bot.reply_to(message, 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>', parse_mode = 'html')
+            bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
 
         else:
             cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {message.from_user.id}')
@@ -365,6 +323,7 @@ def set_new_profile_vk (message):
 @bot.message_handler (commands = ['exam'])
 def find_answer_for_exam (message):
     print(who_is_requestor(message = message)[0])
+    _language = message.from_user.language_code
 
     exams = json.load(open('answers.json', 'r'))
 
@@ -383,23 +342,18 @@ def find_answer_for_exam (message):
             for el in exams: # какие экзамены бывают
                 exam_type_choosing.add(InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
 
-            bot.reply_to(message, EXAM_1, parse_mode = 'html', reply_markup = exam_type_choosing)
+            bot.reply_to(message, EXAM_HELP, parse_mode = 'html', reply_markup = exam_type_choosing)
 
         elif len (message.text.split()) == 2 and message.text.split()[1].lower() == 'config':
-            bot.reply_to (message, f'Состав словаря:\n\ntags - все тэги экзамена\nfile - имя файла (указывается при exam set)\nname - название для показа пользователю\nname_dp - название в дательном падеже\n\n\n{exams}')
+            bot.reply_to (message, EXAM_CONFIGS + exams)
 
         elif len (message.text.split()) > 2 and message.text.split()[1].lower() == 'delete':
             if len (message.text.split()) == 2 or len (message.text.split()) > 3 or message.text.split()[2] not in all_tags:
-                bot.reply_to(message, 'Вы не указали предмет или указали несуществующий. Используйте тег предмета, который состоит из одного символа. Используйте <code>/exam config</code>, чтобы проверить односложные теги.', parse_mode = 'html')
+                bot.reply_to(message, EXAM_NOT_EXISTING_TAG_ERROR, parse_mode = 'html')
                 return
 
-            if message.from_user.id not in admin_id:
-                bot.reply_to(message, 'Извините, вы не можете использовать эту команду.')
-                return
-
-            else:
-                bot.reply_to(message, 'Функция удаления вопросов работает только через консоль на удалённом хосте.')
-
+            bot.reply_to(message, NOT_ENOUGH_RIGHTS_ERROR.get(_language, NOT_ENOUGH_RIGHTS_ERROR['en']))
+            return
 
         elif len (message.text.split()) == 2 and message.text.split()[1].lower() in all_tags:
             for el in exams:
@@ -510,10 +464,6 @@ def find_answer_for_exam (message):
                         conn.close()
 
         elif len (message.text.split()) >= 3 and message.text.split()[1].lower() == 'set':
-            if False and message.from_user.id not in admin_id:
-                bot.reply_to(message, 'Извините, вы не можете создать перечень вопросов к экзамену.')
-                return
-
             discipline = message.text.replace('/exam set ', '')
 
             max_name_len = 24
@@ -579,15 +529,9 @@ def find_answer_for_exam (message):
 
         else:
             request_key = message.text.replace('/exam ', '').lower()
-
-            if len (message.text.split()) > 2 and message.text.split()[1] in all_tags:
-                actual_tag = message.text.split()[1]
-                request_key = message.text.replace(f'{message.text.split[0]} {actual_tag} ', '').lower()
-
             all_results = []
 
             for el in all_files:
-
                 conn = sqlite3.connect(f'{el}.sql')
                 cur = conn.cursor()
 
@@ -664,6 +608,7 @@ def set_tasks_for_exam (message, discipline):
     except Exception as _ex:
         print (_ex)
         bot.reply_to(message, 'Произошла непредвиденная ошибка.')
+
 
 @bot.message_handler(commands=['examanswer'])
 def examanswer (message):
@@ -779,7 +724,7 @@ def mute_user (message):
     print(_req[0])
 
     if message.from_user.id not in admin_id:
-        bot.reply_to (message, 'Извините, вы не можете использовать эту команду.')
+        bot.reply_to (message, NOT_ENOUGH_RIGHTS_ERROR)
         return
     
     command = message.text.split()
@@ -845,7 +790,7 @@ def mute_user (message):
 @bot.message_handler(commands=['unmute'])
 def unmute_user (message):
     if message.from_user.id not in admin_id:
-        bot.reply_to (message, 'Извините, вы не можете использовать эту команду.')
+        bot.reply_to (message, NOT_ENOUGH_RIGHTS_ERROR)
         return
 
     if len (message.text.split()) == 1:
@@ -915,28 +860,10 @@ def pun_append (punnished_id, reason, pun_author, pun_type, first_date, pun_time
 
 @bot.message_handler (commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
 def feedback_menu (message):
-    '''
-    Чтение и запись отзывов на свободные темы.
-    '''
-
     print (who_is_requestor (message)[0])
 
     if len (message.text.split()) == 1:
-        feedback_markup = InlineKeyboardMarkup(row_width = 1)
-        feedback_markup.add(InlineKeyboardButton(text = 'Оставить отзыв', callback_data = 'feedback send'))
-        feedback_markup.add(InlineKeyboardButton(text = 'Читать отзывы', callback_data = 'feedback read'))
-        feedback_markup.add(InlineKeyboardButton(text = 'Читать гайд по команде', callback_data = 'feedback guide'))
-
-        bot.reply_to (
-            message=message,
-            text='<b>Продолжая использовать эту функцию, вы принимаете следующие условия:</b>\n\n' +
-            '1. За авторством каждого из отзывов стоит какой-либо пользователь. Администрация бота к нему не имеет никакого отношения.\n' +
-            '2. Публикация любых оскорбительных и неправдивых отзывов запрещена. Такие отзывы будут удаляться по мере обнаружения.\n' +
-            '3. Если вы считаете какой-либо из отзывов недопустимым, свяжитесь с любым администратором для его удаления.\n\n' +
-            'Выберете, что вы хотите сделать:',
-            reply_markup = feedback_markup,
-            parse_mode = 'html'
-        )
+        bot.reply_to (message=message, text=FEEDBACKS_HELP, reply_markup = feedback_markup(), parse_mode = 'html')
 
     elif len(message.text.split()) == 2 and message.text.split()[1] in ('view', 'смотреть', 'read', 'читать', 'см'):
         read_feedback (chat_id = message.chat.id, summoned_by_cmd = True, message_id = None, feedback_id = 0)
@@ -945,9 +872,7 @@ def feedback_menu (message):
         bot.send_message (
             message.chat.id, 'Шаг 1/2. Укажите, на КОГО вы пишите отзыв.\n\n' +
             '<b>Если вы найдёте нужный объект отзыва в списке ниже, скопируйте его, нажав на него.</b> Это позволит отнести текущий отзыв к группе отзывов по одной и той же теме, что в будущем может облегчить поиск.\n\n' +
-            f'{feedback_contents()}',
-            parse_mode = 'html'
-            )
+            f'{feedback_contents()}', parse_mode = 'html')
         bot.register_next_step_handler (message, set_new_feedback, message.text.split()[2] == 'anon')
 
     elif len(message.text.split()) == 2 and message.text.split()[1] == 'set_table':
@@ -962,12 +887,8 @@ def feedback_menu (message):
 
         if requested_feedback.isdigit():
             bot.reply_to(message, f'Результаты поиска по {requested_feedback}')
+            read_feedback (chat_id = message.chat.id, summoned_by_cmd = True, message_id = None, feedback_id = int(requested_feedback))
 
-            read_feedback (
-                    chat_id = message.chat.id,
-                    summoned_by_cmd = True,
-                    message_id = None,
-                    feedback_id = int(requested_feedback))
         else:
             conn = sqlite3.connect('feedback.sql')
             cur = conn.cursor()
@@ -975,11 +896,8 @@ def feedback_menu (message):
 
             cur.execute(f'SELECT feedback_id FROM feedback WHERE name = "{requested_feedback}"')
             for feedback_id in cur.fetchall():
-                read_feedback (
-                        chat_id = message.chat.id,
-                        summoned_by_cmd = True,
-                        message_id = None,
-                        feedback_id = feedback_id[0])
+                read_feedback (chat_id = message.chat.id, summoned_by_cmd = True, message_id = None, feedback_id = feedback_id[0])
+
             cur.close()
             conn.close()
 
@@ -1096,11 +1014,7 @@ def setting_the_feedback (message, feedback_name, anon):
     bot.reply_to (message, 'Регистрация отзыва успешно завершена.')
 
 def edit_feedback (message, feedback_id):
-    Feedback().edit_feedback(
-        feedback_id = feedback_id,
-        column = 'text',
-        new_value = message.text
-    )
+    Feedback().edit_feedback(feedback_id = feedback_id, column = 'text', new_value = message.text)
     bot.reply_to(message, 'Отзыв обновлён.')
 
 
@@ -1125,72 +1039,17 @@ def button_menu_universal_func(call):
     cur.close()
     conn.close()
 
-    back_to_help_menu = types.InlineKeyboardMarkup(row_width = 1)
-    back_to_help_menu.add(telebot.types.InlineKeyboardButton(text = 'Вернуться к общей справке', callback_data = 'back_to_help_menu'))
-
     if call.data == 'help_menu_schedule':
-        bot.edit_message_text(
-            chat_id = call.message.chat.id, message_id = call.message.id,
-            text = '''<i><b>Расписание - полный список пар на текущий день или неделю с возможностями, доступными только в этом боте.</b></i>
-
-<b>/schedule</b> - расписание на эту неделю.
-<b>/fill</b> - быстрое заполнение расписания.
-
-<code>/schedule +n</code> - вывести расписание на n недель вперёд:
-Пример: <code>/schedule +3</code> - вывести расписание через 3 недели.
-
-Можно использовать и минус.
-Пример: <code>/schedule -2</code> - вывести расписание, котороы было 2 недели назад.''',
-            parse_mode = 'html', reply_markup = back_to_help_menu)
+        bot.edit_message_text(HELP_MENU_SCHEDULE, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
 
     elif call.data == 'help_menu_plan':
-        bot.edit_message_text(
-            chat_id = call.message.chat.id, message_id = call.message.id,
-            text = '''!!! ВНИМАНИЕ !!!
-Это справка для старой команды. Она написана давно и очень криво, поэтому в будущем при необходимости функционал будет полностью переписан и приведён в человеческий вид.
-
-<i><b>План - меню заданий, которые могут забронировать пользователи бота.</b></i>
-
-<code><b>/plan set</b></code> - создать план.
-<code><b>/plan view</b></code> - посмотреть текущий план.
-<code><b>/plan send</b></code> - отправить план всем пользователям;
-<code><b>/plan unband</b></code> - отменить бронь темы (для администрации);
-<code><b>/plan attach</b></code> - привязать план к существующей паре;
-<code><b>/plan append [Номер темы] [Имя пользователя]</b></code> - добавить пользователя в план к определённой теме;
-<code><b>/plan fill [Имя, с которого начать заполнение]</b></code> - занять все пункты плана именами из списка.''',
-            parse_mode = 'html', reply_markup = back_to_help_menu)
+        bot.edit_message_text(HELP_MENU_PLAN, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
 
     elif call.data == 'help_menu_admin':
-        bot.edit_message_text(
-            chat_id = call.message.chat.id, message_id = call.message.id,
-            text = '''<i><b>Команды для администрирования бота:</b></i>
-
-🔊 <b>/mute</b> & <b>/unmute</b> - выдача & снятие мута в беседах (работает криво, не советую на неё расчитывать).
-
-♻ <code><b>/wipe everything</b></code> - очистить всё расписание;
-♻ <code><b>/wipe homework</b></code> - очистить только д/з и открепить план;
-♻ <code><b>/wipe plan</b></code> - очистить все задания.
-
-📩 <code><b>/mailing</b></code> - рассылка новостей (команда отправляет текст сообщения, введённого после команды, ВСЕМ пользователям)
-
-💮 <code><b>/lookup</b></code> - команды для разработчика''',
-            parse_mode = 'html', reply_markup = back_to_help_menu)
+        bot.edit_message_text(HELP_MENU_ADMIN, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
 
     elif call.data == 'help_menu_other':
-        bot.edit_message_text(
-            chat_id = call.message.chat.id, message_id = call.message.id,
-            text = '''<i><b>Прочие команды:</b></i>
-
-<b>/register</b> - команда для регистрации в боте.
-
-<b>/color</b> - меню установки цветовой темы.
-
-<b>/profile</b> - взаимодействие с профилем.
-
-<b>/exam</b> - ответы на вопросы к экзаменам.
-
-<b>/feedback</b> - отзывы.''',
-            parse_mode = 'html', reply_markup = back_to_help_menu)
+        bot.edit_message_text(HELP_MENU_OTHER, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
 
     elif call.data == 'back_to_help_menu':
         bot.edit_message_text(
@@ -1209,12 +1068,13 @@ def button_menu_universal_func(call):
         cur.execute(f'UPDATE users SET color = "{new_color}" WHERE user_id = {call.message.chat.id}')
         conn.commit()
 
-        bot.edit_message_text(f'Цветовая тема установлена: <b>{new_color}</b>', parse_mode='html',
-            chat_id = call.message.chat.id, message_id = call.message.id,
-            reply_markup = color_chooser_markup())
-        
         if cur.rowcount == 0:
-            bot.send_message(call.message.chat.id, 'Для установки цвета необходимо пройти регистрацию.\n Команда /register')
+            bot.send_message(call.message.chat.id, PROFILE_NOT_FOUND_ERROR)
+
+        else:
+            bot.edit_message_text(f'Цветовая тема установлена: <b>{new_color}</b>', parse_mode='html',
+                chat_id = call.message.chat.id, message_id = call.message.id,
+                reply_markup = color_chooser_markup())
 
         cur.close()
         conn.close()
@@ -1357,7 +1217,7 @@ def button_menu_universal_func(call):
                                           text = '<b>Выберете цветовую тему:</b>', parse_mode = 'html', reply_markup = color_chooser_markup())
                     
                 elif "delete" == call.data.split()[2]:
-                    bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Для избежания случайного удаления профиля используйте /dev users delete ID.')
+                    bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Для избежания случайного удаления профиля используйте /dev delete ID.')
 
             except Exception as _ex:
                 bot.send_message(call.message.chat.id, f'Произошла непредвиденная ошибка:\n{_ex}')
