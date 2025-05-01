@@ -1,4 +1,8 @@
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+from .user import UserProfile
+
+class _TypeOfSorting:
+    def __init__(self): pass
 
 def main_help_markup(admin_version: bool = True) -> InlineKeyboardMarkup:
     help_menu = InlineKeyboardMarkup(row_width = 1)
@@ -10,6 +14,12 @@ def main_help_markup(admin_version: bool = True) -> InlineKeyboardMarkup:
     help_menu.add(InlineKeyboardButton(text = 'Прочие команды', callback_data = 'help_menu_other'))
 
     return help_menu
+
+def back_to_main_help_markup() -> InlineKeyboardMarkup:
+    back_to_help_menu = InlineKeyboardMarkup(row_width = 1)
+    back_to_help_menu.add(InlineKeyboardButton(text = 'Вернуться к общей справке', callback_data = 'back_to_help_menu'))
+
+    return back_to_help_menu
 
 
 def color_chooser_markup() -> InlineKeyboardMarkup:
@@ -66,3 +76,37 @@ def group_chooser_markup() -> InlineKeyboardMarkup:
     group_menu.add(InlineKeyboardButton(text = 'Нет моей группы', callback_data = f'group set {1}'))
 
     return group_menu
+
+
+def select_hs_markup(page: int = 1, sort: _TypeOfSorting | None = None) -> InlineKeyboardMarkup:
+    all_hs = [el for el in range(0, 15)]
+    page_numbers = 1
+
+    prev_page = InlineKeyboardButton(text = '⬅️', callback_data = f'hs page {page - 1 if page > 1 else page_numbers}')
+    page_counter = InlineKeyboardButton(text = f'{page} / {page_numbers}', callback_data="...")
+    next_page = InlineKeyboardButton(text = '➡️', callback_data = f'hs page {page + 1 if page < page_numbers else 1}')
+
+    hs_add = InlineKeyboardButton(text = 'Добавить вариант', callback_data = f'hs add')
+
+    hs_sortby_popular = InlineKeyboardButton(text = 'По популярности', callback_data = f'hs add')
+    hs_sortby_alphabet = InlineKeyboardButton(text = 'По алфавиту', callback_data = f'hs add')
+
+    hs_markup = InlineKeyboardMarkup()
+
+    for hs in all_hs:
+        nigger = InlineKeyboardButton(text=hs, callback_data="...")
+        hs_markup.row(nigger)
+
+    hs_markup.row(prev_page, page_counter, next_page)
+    hs_markup.row(hs_add)
+
+    return hs_markup
+
+
+def feedback_markup() -> InlineKeyboardMarkup:
+    feedback_markup = InlineKeyboardMarkup(row_width = 1)
+    feedback_markup.add(InlineKeyboardButton(text = 'Оставить отзыв', callback_data = 'feedback send'))
+    feedback_markup.add(InlineKeyboardButton(text = 'Читать отзывы', callback_data = 'feedback read'))
+    feedback_markup.add(InlineKeyboardButton(text = 'Читать гайд по команде', callback_data = 'feedback guide'))
+
+    return feedback_markup
