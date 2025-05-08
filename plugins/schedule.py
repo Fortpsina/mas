@@ -13,7 +13,6 @@
 
 from sqlite3 import connect
 from .DayOfWeek import *
-from .command_logger import select_group_by_id
 from .clr import clr
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, time, timedelta
@@ -96,15 +95,14 @@ class Schedule:
                   teacher: str = None,
                   lesson_name: str = None,
                   lesson_place: str = None,
-                  group_id: int = 0):
+                  group: str | None = None):
         '''Поиск расписания по введённым в класс параметрам.'''
 
         self.lesson_position = lesson_position
         self.teacher = teacher
         self.lesson_name = lesson_name
         self.lesson_place = lesson_place
-        self.group_id = group_id
-        self.group_name = select_group_by_id (group_id)
+        self.group_name = group
 
         if lesson_date == 'now':
             lesson_date = datetime.now().strftime('%d.%m.20%y')
@@ -132,11 +130,11 @@ class Schedule:
         connection = connect('schedule.sql')
         cursor = connection.cursor()
 
-        params = [group_id]
+        params = [group]
 
         if teacher is not None:
             find_by_teacher = ' AND teacher = ?'
-            params.append (teacher)
+            params.append(teacher)
 
         if lesson_name is not None:
             find_by_name = ' AND lesson_name = ?'
@@ -160,7 +158,7 @@ class Schedule:
                         find_by_place + find_by_date + 
                         find_by_position, params)
         
-        self.data = cursor.fetchall ()
+        self.data = cursor.fetchall()
         self.dicts_data = []
 
         for i in range (0, len (self.data)):
@@ -213,7 +211,7 @@ class Schedule:
 
     @staticmethod
     def setup (lesson_date: str,
-               group_id: int = 0,
+               group: str | None = None,
                teacher: str = '?',
                lesson_position: int = 8,
                lesson_name: str = 'Название не указано',
@@ -250,37 +248,21 @@ class Schedule:
             day = int (lesson_date.replace('.', ' ').split()[0])
         ) [0]
 
-        group_name = select_group_by_id (group_id)
-        if group_id == 0:
-            group_name = '?'
-
         if not ignore_limits:
-            if not 'int' in str (group_id.__class__):
-                return 'ID группы может быть только целочисленным рациональным числом.'
-            if not 'str' in str (group_name.__class__) or len (group_name) > 50:
-                return 'Название группы может быть только строкой короче 51-го символа.'
-            if not 'str' in str (teacher.__class__) or len (teacher) > 50:
-                return 'Преподаватель может быть только строкой короче 51-го символа.'
-            if not 'int' in str (lesson_position.__class__) or not lesson_position in range (1, 9):
-                return 'Номер пары может быть только числом от 1 до 8'
-            if not 'str' in str (lesson_name.__class__) or len (lesson_name) > 150:
-                return 'Название пары может быть только строкой короче 151-го символа.'
-            if not 'str' in str (lesson_place.__class__) or len (lesson_place) > 150:
-                return 'Расположение пары может быть только строкой короче 151-го символа.'
-            if not 'str' in str (lesson_homework.__class__) or len (lesson_homework) > 500:
-                return 'Д/З может быть только строкой короче 501-го символа.'
-            if not 'str' in str (lesson_tasks.__class__) or len (lesson_tasks) > 500:
-                return 'Список тем может быть только строкой короче 4001-го символа.'
-            if not 'str' in str (lesson_type.__class__) or len (lesson_tasks) > 500:
-                return 'Тип занятия может быть только строкой короче 51-го символа.'
-            if not 'str' in str (lesson_date.__class__) or len (lesson_tasks) > 50:
-                return 'Дата должна быть строкой, записанной по одной из следующих форм: ДД.ММ.ГГГГ / Д.ММ.ГГГГ / ДД.М.ГГГГ / Д.М.ГГГГ.'
+            assert group is not None, 'Группа не указана'
+            assert teacher.__class__         is str and len (teacher) < 50, 'Преподаватель может быть только строкой короче 50-и символов.'
+            assert lesson_position.__class__ is int and lesson_position in range (1, 9), 'Номер пары может быть только числом от 1 до 8'
+            assert lesson_name.__class__     is str and len (lesson_name) < 150, 'Название пары может быть только строкой короче 150-и символов.'
+            assert lesson_place.__class__    is str and len (lesson_place) < 150, 'Расположение пары может быть только строкой короче 150-и символов.'
+            assert lesson_homework.__class__ is str and len (lesson_homework) < 500, 'Д/З может быть только строкой короче, чем 500 символа.'
+            assert lesson_tasks.__class__    is str and len (lesson_tasks) < 4000, 'Список тем может быть только строкой короче, чем 4000 символов.'
+            assert lesson_type.__class__     is str and len (lesson_tasks) < 51, 'Тип занятия может быть только строкой короче 50-и символов.'
 
 
         conn = connect(f'schedule.sql')
         cur = conn.cursor()
 
-        cur.execute (f'SELECT lesson_name FROM schedule WHERE lesson_date = ? AND group_id = ? AND lesson_position = ?', (lesson_date, group_id, lesson_position))
+        cur.execute (f'SELECT lesson_name FROM schedule WHERE lesson_date = ? AND group_id = ? AND lesson_position = ?', (lesson_date, group, lesson_position))
         conflictable_lessons = cur.fetchall()
 
         if len (conflictable_lessons) > 0: # Сделать интеграцию, если дойдут руки дописать update
@@ -290,10 +272,9 @@ class Schedule:
 
         cur.execute (
             'INSERT INTO schedule ' +
-            '(group_id, group_name, teacher, day_of_week, lesson_position, lesson_name, lesson_place, lesson_homework, lesson_tasks, lesson_type, lesson_date, attendance) ' +
+            '(group_name, teacher, day_of_week, lesson_position, lesson_name, lesson_place, lesson_homework, lesson_tasks, lesson_type, lesson_date, attendance) ' +
             ' VALUES (' +
-            f'"{group_id}", ' +                       # group_id INTEGER
-            f'"{group_name}", ' +                     # group_name varshar(150)
+            f'"{group}", ' +                          # group_name varshar(150)
             f'"{teacher}", ' +                        # teacher varshar(50)
             f'"{day_of_week}", ' +                    # day_of_week varshar(20)
             f'"{lesson_position}", ' +                # lesson_position INTEGER // (1 - 8)
@@ -303,7 +284,7 @@ class Schedule:
             f'"{lesson_tasks}", ' +                   # lesson_tasks varshar(4000)
             f'"{lesson_type}", ' +                    # lesson_type varshar(50)
             f'"{lesson_date}", ' +                    # lesson_date varshar(50)
-            f'"Посещения {group_name}:"' +
+            f'"Посещения {group}:"' +
             ')'
         )
         conn.commit()
@@ -311,7 +292,7 @@ class Schedule:
         cur.close()
         conn.close()
 
-        return f'Успешно добавлена {lesson_position} пара ({lesson_type}) на {lesson_date} для группы {group_name}:\n\nНазвание: {lesson_name}\nПреподаватель: {teacher}\nРасположение: {lesson_place}'
+        return f'Успешно добавлена {lesson_position} пара ({lesson_type}) на {lesson_date} для группы {group}:\n\nНазвание: {lesson_name}\nПреподаватель: {teacher}\nРасположение: {lesson_place}'
 
     def update (self, ignore_limits: bool = False, **kwargs):
         '''Призывая класс, нужно указать, что нужно отредактировать (сослаться на нужную позицию).\n
