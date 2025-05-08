@@ -1,22 +1,21 @@
 import sqlite3
 
-import telebot
 from telebot import types
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji
 
 import datetime
 from datetime import timedelta
 
-import sys, json, pprint
+import sys, json
 from pathlib import Path
 
 from plugins.user import *
-from plugins.command_logger import *
 from plugins.feedbacks import *
 from plugins.schedule import *
 from plugins.markups import *
 from plugins.name_checker import *
 from plugins.langs import *
+from plugins.utils import *
 
 from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
@@ -33,6 +32,7 @@ if str(PROJECT_ROOT) not in sys.path:
 def start(message):
     if CONTROL_USERS_TABLE:
         create_table("users")
+        reg_notify(message)
 
     new_user = UserProfile(message.from_user.id)
     if new_user.exists:
@@ -61,16 +61,15 @@ def user_name(message, new_user: UserProfile):
     bot.send_message(message.chat.id, REG_2, parse_mode='html')
     bot.register_next_step_handler(message, user_pass, new_user)
 
-def user_pass(message, new_user):
+def user_pass(message, new_user: UserProfile):
     new_user.update('conditions', message.text.strip())
     bot.send_message (message.chat.id, REG_3, parse_mode = 'html', reply_markup = select_hs_markup())
 
 
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
 def help(message):
-    print(who_is_requestor(message = message)[0])
-    bot.reply_to(message, '''<b>Получение справок по использованию команд:</b>''',
-                 parse_mode='html', reply_markup = main_help_markup(message.from_user.id in admin_id))
+    print(who_is_requestor(message)[0])
+    bot.reply_to(message, HELP.get(message.from_user.language_code, HELP['en']), parse_mode='html')
 
 
 @bot.message_handler (commands = ['fill'])
@@ -116,18 +115,23 @@ def attend (message):
 
 @bot.message_handler(content_types=['location'])
 def location_handler(message):
-    req = GeoRequest(message)
-    print (f'{req.requestor} отправил(а) геопозицию для отметки в расписании.')
+    requestor = UserProfile(message.from_user.id)
+    if not requestor.exists:
+        bot.reply_to(message, "Невозможно определить Ваше посещение, поскольку Вы не зарегестрированы. Зарегестрируйтесь командой /register")
+        return
+    print (f'{requestor.user_name} отправил(а) геопозицию для отметки в расписании.')
+
+    geo = GeoRequest(message)
 
     global expect_geo
     if message.from_user.id in expect_geo:
         expect_geo.remove(message.from_user.id)
 
-    if req.in_rea:
-        bot.reply_to (message, Schedule(req.group_id).attend(req.requestor))
+    if geo.in_rea:
+        bot.reply_to (message, Schedule(requestor.user_group).attend(requestor.user_name))
     else:
         details_geo = InlineKeyboardMarkup()
-        details_geo.add(InlineKeyboardButton(text = "Подробнее", callback_data = f"geo details {req.longitude} {req.latitude}"))
+        details_geo.add(InlineKeyboardButton(text = "Подробнее", callback_data = f"geo details {geo.longitude} {geo.latitude}"))
         bot.reply_to(message, 'В отметке отказано, вы не на паре.', reply_markup = details_geo)
 
 
@@ -140,7 +144,12 @@ def attendance (message):
 
 @bot.message_handler (commands = ['schedule', 's', 'с', 'расписание', 'р'])
 def schedule (message):
-    print(who_is_requestor(message)[0])
+    requestor = UserProfile(message.from_user.id)
+    if not requestor.exists:
+        bot.reply_to(message, "Не могу определить Вашу группу, поскольку Вы не зарегестрированы. Зарегестрируйтесь командой /register")
+        return
+    print(f"{requestor.user_name}: {message.text}")
+    
     week_modifier = 0
     lesson_date = datetime.now().strftime('%d.%m.20%y')
 
@@ -157,10 +166,8 @@ def schedule (message):
 
     temp_msg_notify = bot.reply_to (message, 'Готовлю для вас ваше расписание...')
 
-    render_schedule = Schedule (
-        lesson_date = lesson_date,
-        group_id = who_is_requestor(message)[1]
-    ).render (color = select_color_by_id (message.chat.id), week_modifier = week_modifier * 7)
+    render_schedule = Schedule(lesson_date = lesson_date, group_id = requestor.user_group
+    ).render(color = requestor.user_color, week_modifier = week_modifier * 7)
 
     media_group = []
     for photo in ('rendered_schedule/Monday_Image.png',
@@ -190,15 +197,14 @@ def settings(message):
 def lookup(message):
     print (who_is_requestor(message)[0])
     command = message.text.split()
+    _lang = message.from_user.language_code
 
     if len(command) >= 2:
-
         if message.from_user.id in admin_id and command[1] == 'users':
             bot.reply_to(message, users_list(), parse_mode='html')
 
         elif message.from_user.id in admin_id and len(command) > 2 and command[1] == 'delete':
             bot.reply_to(message, UserProfile(int(command[2])).delete(len(command)>3 and command[3]=="physically"), parse_mode='html')
-            return
 
         elif command[1] == 'id':
             bot.reply_to(message, f'<code>{message.from_user.id}</code>', parse_mode='html')
@@ -207,9 +213,7 @@ def lookup(message):
             bot.send_message(message.chat.id, message)
 
         elif message.from_user.id in admin_id and command[1] == 'markup':
-            _possible_markups = {'main_help_markup': main_help_markup,
-                                 'back_to_main_help_markup': back_to_main_help_markup,
-                                 'color_chooser_markup': color_chooser_markup,
+            _possible_markups = {'color_chooser_markup': color_chooser_markup,
                                  'profile_options_markup': profile_options_markup,
                                  'group_chooser_markup': group_chooser_markup,
                                  'select_hs_markup': select_hs_markup,
@@ -218,10 +222,10 @@ def lookup(message):
             possibles = '\n'.join([f"<code>{m}</code>" for m in _possible_markups.keys()])
 
             if len(command) < 3:
-                bot.reply_to(message, text=POSSIBLE_KEYBOARDS+possibles, parse_mode='html')
+                bot.reply_to(message, text=POSSIBLE_KEYBOARDS.get(_lang, POSSIBLE_KEYBOARDS['en'])+possibles, parse_mode='html')
                 return
             
-            bot.send_message(message.chat.id, PREVIEW_KEYBOARDS, reply_markup=_possible_markups.get(command[2])())
+            bot.send_message(message.chat.id, PREVIEW_KEYBOARDS.get(_lang, PREVIEW_KEYBOARDS['en']), reply_markup=_possible_markups.get(command[2])())
 
         elif message.from_user.id in admin_id and command[1] == "execute":
             try:
@@ -465,7 +469,6 @@ def find_answer_for_exam (message):
 
         elif len (message.text.split()) >= 3 and message.text.split()[1].lower() == 'set':
             discipline = message.text.replace('/exam set ', '')
-
             max_name_len = 24
 
             if len (discipline) > max_name_len:
@@ -624,14 +627,12 @@ def examanswer (message):
 
         exams = json.load(open('answers.json', 'r'))
 
-        found_tag = False
-
         for el in exams:
             if cmd[1] in el['tags']:
                 filename = el['file']
                 discipline = el['name_dp']
-                found_tag = True
-        if found_tag == False:
+                break
+        else:
             bot.reply_to(message, f'Не найден список вопросов к предмету "{cmd[1]}".')
             return
 
@@ -916,26 +917,12 @@ def read_feedback (chat_id, summoned_by_cmd: bool, message_id = None, feedback_i
     if feedback_contents[9] == 1: # Пропуск удалённых отзывов
         if chat_id != feedback_contents[4] and chat_id not in admin_id: # Показать сообщение автору
             if backscroll: # Если пользователь листает назад
-                read_feedback (
-                    chat_id = chat_id,
-                    summoned_by_cmd = summoned_by_cmd,
-                    message_id = message_id,
-                    feedback_id = feedback_id - 1,
-                    backscroll = True)
+                read_feedback (chat_id = chat_id, summoned_by_cmd = summoned_by_cmd, message_id = message_id, feedback_id = feedback_id - 1, backscroll = True)
             else:
                 if max_feedback > feedback_id: # Если следующего сообщения нет, то
-                    read_feedback (
-                        chat_id = chat_id,
-                        summoned_by_cmd = summoned_by_cmd,
-                        message_id = message_id,
-                        feedback_id = feedback_id + 1)
-
+                    read_feedback (chat_id = chat_id, summoned_by_cmd = summoned_by_cmd, message_id = message_id, feedback_id = feedback_id + 1)
                 else:
-                    read_feedback (
-                        chat_id = chat_id,
-                        summoned_by_cmd = summoned_by_cmd,
-                        message_id = message_id,
-                        feedback_id = 0)
+                    read_feedback (chat_id = chat_id, summoned_by_cmd = summoned_by_cmd, message_id = message_id, feedback_id = 0)
             return
 
         else:
@@ -991,7 +978,6 @@ def read_feedback (chat_id, summoned_by_cmd: bool, message_id = None, feedback_i
         )
 
 def set_new_feedback (message, anon):
-
     feedback_name = message.text.strip()
 
     if len (feedback_name) > 48:
@@ -1002,15 +988,8 @@ def set_new_feedback (message, anon):
     bot.register_next_step_handler (message, setting_the_feedback, feedback_name, anon)
 
 def setting_the_feedback (message, feedback_name, anon):
-    author = 'Аноним'
-    if not anon:
-        author = who_is_requestor(message)[0].split()[0].strip().replace(':', '')
-
-    Feedback (
-        name = feedback_name,
-        text = message.text,
-        author = author
-    ).set_feedback(message.chat.id)
+    author = who_is_requestor(message)[1] if not anon else "Аноним"
+    Feedback (name = feedback_name, text = message.text, author = author).set_feedback(message.chat.id)
     bot.reply_to (message, 'Регистрация отзыва успешно завершена.')
 
 def edit_feedback (message, feedback_id):
@@ -1020,46 +999,11 @@ def edit_feedback (message, feedback_id):
 
 @bot.callback_query_handler(func = lambda call: True)
 def button_menu_universal_func(call):
-
-    # Мест для кнопок: 5
-
-    requestor = call.message.chat.id
-
-    conn = sqlite3.connect('database.sql')
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM users')
-    users = cur.fetchall()
-
-    for user in users:
-        if user[3] == requestor:
-            requestor = user[1]
-
+    requestor = UserProfile(call.message.chat.id).user_name or call.message.from_user.full_name
     print(f'{requestor}: {call.data}')
 
-    cur.close()
-    conn.close()
 
-    if call.data == 'help_menu_schedule':
-        bot.edit_message_text(HELP_MENU_SCHEDULE, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
-
-    elif call.data == 'help_menu_plan':
-        bot.edit_message_text(HELP_MENU_PLAN, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
-
-    elif call.data == 'help_menu_admin':
-        bot.edit_message_text(HELP_MENU_ADMIN, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
-
-    elif call.data == 'help_menu_other':
-        bot.edit_message_text(HELP_MENU_OTHER, call.message.chat.id, call.message.id, parse_mode = 'html', reply_markup = back_to_main_help_markup())
-
-    elif call.data == 'back_to_help_menu':
-        bot.edit_message_text(
-            chat_id = call.message.chat.id,
-            message_id = call.message.id,
-            text = '<b>Получение справок по использованию команд:</b>',
-            parse_mode = 'html', reply_markup = main_help_markup())
-
-
-    elif 'choose_color_' in call.data:
+    if 'choose_color_' in call.data:
         new_color = call.data.replace("choose_color_", "")
 
         conn = sqlite3.connect('database.sql')
@@ -1390,6 +1334,7 @@ def button_menu_universal_func(call):
         else:
             bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Произошла ошибка. Инструкции для запроса {call.data} не существует.')
 
+
 # @bot.message_handler(func = lambda message: True)
 @bot.message_handler(content_types = ["text", "audio", "document", "photo", "sticker", "video", "video_note", "voice"])
 def chat_control (message):
@@ -1447,5 +1392,4 @@ def chat_control (message):
                 print ('[Не распознано] ' + who_is_requestor(message)[0])
 
 
-#bot.polling()
-bot.infinity_polling (timeout=10, long_polling_timeout = 5)
+bot.infinity_polling()
