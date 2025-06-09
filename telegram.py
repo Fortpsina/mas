@@ -35,11 +35,12 @@ def start(message):
         reg_notify(message)
 
     new_user = UserProfile(message.from_user.id)
+
     if new_user.exists:
         bot.reply_to(message, f'Вы уже зарегестрированы в боте.')
         return
 
-    bot.send_message(message.chat.id, REG_1, parse_mode='html')
+    bot.send_message(message.chat.id, reg_text(message, 1), parse_mode='html')
     register_user(message)
     bot.register_next_step_handler(message, user_name, new_user)
 
@@ -58,12 +59,12 @@ def user_name(message, new_user: UserProfile):
     
     new_user.update('name', _name_params['name'])
     
-    bot.send_message(message.chat.id, REG_2, parse_mode='html')
+    bot.send_message(message.chat.id, reg_text(message, 2), parse_mode='html')
     bot.register_next_step_handler(message, user_pass, new_user)
 
 def user_pass(message, new_user: UserProfile):
     new_user.update('conditions', message.text.strip())
-    bot.send_message (message.chat.id, REG_3, parse_mode = 'html', reply_markup = select_hs_markup())
+    bot.send_message (message.chat.id, reg_text(message, 3), parse_mode = 'html', reply_markup = select_hs_markup())
 
 
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
@@ -256,7 +257,7 @@ def interactive_profile(message):
     profile = UserProfile(_id)
 
     if not profile.exists:
-        bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
+        bot.reply_to(message, profile_not_found(message, _own_prifile))
         return
     
     _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
@@ -273,7 +274,7 @@ def set_new_profile_name (message):
     profile = UserProfile(message.from_user.id)
 
     if not profile.exists:
-        bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
+        bot.reply_to(message, profile_not_found(message, True), parse_mode = 'html')
         return
 
     _new_name = name_helper(message.text.strip())
@@ -313,7 +314,7 @@ def set_new_profile_vk (message):
         cur.execute(f'SELECT name FROM users WHERE user_id = {message.from_user.id}')
         
         if not cur.fetchone():
-            bot.reply_to(message, PROFILE_NOT_FOUND_ERROR, parse_mode = 'html')
+            bot.reply_to(message, profile_not_found(message, True), parse_mode = 'html')
 
         else:
             cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {message.from_user.id}')
@@ -356,7 +357,7 @@ def find_answer_for_exam (message):
                 bot.reply_to(message, EXAM_NOT_EXISTING_TAG_ERROR, parse_mode = 'html')
                 return
 
-            bot.reply_to(message, NOT_ENOUGH_RIGHTS_ERROR.get(_language, NOT_ENOUGH_RIGHTS_ERROR['en']))
+            bot.reply_to(message, not_enough_rights(message))
             return
 
         elif len (message.text.split()) == 2 and message.text.split()[1].lower() in all_tags:
@@ -725,7 +726,7 @@ def mute_user (message):
     print(_req[0])
 
     if message.from_user.id not in admin_id:
-        bot.reply_to (message, NOT_ENOUGH_RIGHTS_ERROR)
+        bot.reply_to (message, not_enough_rights(message))
         return
     
     command = message.text.split()
@@ -791,7 +792,7 @@ def mute_user (message):
 @bot.message_handler(commands=['unmute'])
 def unmute_user (message):
     if message.from_user.id not in admin_id:
-        bot.reply_to (message, NOT_ENOUGH_RIGHTS_ERROR)
+        bot.reply_to(message, not_enough_rights(message))
         return
 
     if len (message.text.split()) == 1:
@@ -1013,7 +1014,7 @@ def button_menu_universal_func(call):
         conn.commit()
 
         if cur.rowcount == 0:
-            bot.send_message(call.message.chat.id, PROFILE_NOT_FOUND_ERROR)
+            bot.send_message(call.message.chat.id, profile_not_found(call.message, True))
 
         else:
             bot.edit_message_text(f'Цветовая тема установлена: <b>{new_color}</b>', parse_mode='html',
