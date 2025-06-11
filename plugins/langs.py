@@ -1,3 +1,8 @@
+"""Данный модуль содержит фразы, используемые в ответах бота на следующих языках:
+английский, русский, испанский, немецкий, французский, украинский, польский, японский и корейский."""
+
+# Сообщить, что команда не может быть исполнена
+# ввиду несоответствия уровня прав команде.
 NOT_ENOUGH_RIGHTS_ERROR = {
     'en': 'You are not allowed to use this command.',
     'ru': 'Вы не можете использовать эту команду.',
@@ -6,13 +11,12 @@ NOT_ENOUGH_RIGHTS_ERROR = {
     'fr': 'Vous nêtes pas autorisé à utiliser cette commande.',
     'ua': 'Вам не дозволено використовувати цю команду.',
     'pl': 'Nie masz uprawnień do używania tego polecenia.',
-    'ar': 'لا يُسمح لك باستخدام هذا الأمر.',
-    'ch': '您无权使用此命令。',
     'jp': 'このコマンドを使用することはできません。',
     'kr': '이 명령을 사용할 수 없습니다.',
 }
 
 def not_enough_rights(message) -> str:
+    '''"You are not allowed to use this command." in different languages'''
     # при инициализации lang ставится or 'en' на случай,
     # если из сообщения не удастся извлечь язык пользователя
     lang: str = message.from_user.language_code or 'en'
@@ -22,6 +26,32 @@ def not_enough_rights(message) -> str:
     return NOT_ENOUGH_RIGHTS_ERROR.get(lang, default)
 
 
+
+# Сообщить, что значение чего-либо выше установленной
+# максимальной длины и подсказать, что делать
+TOO_LONG_MESSAGE_ERROR = {
+    'en': 'This is <b>too long</b> value: <code>%s</code> symbols. Enter something not longer than <code>%s</code> symbols and it will work.',
+    'ru': 'Слишком длинное значение (%s символов). Укажите значение не более %s символов.',
+    'sp': 'Este valor es demasiado largo: <code>%s</code> símbolos. Introduzca un valor no mayor a <code>%s</code> símbolos y funcionará.',
+    'de': 'Dies ist ein <b>zu langer</b> Wert: <code>%s</code> Zeichen. Geben Sie einen Wert ein, der nicht länger als <code>%s</code> Zeichen ist, dann funktioniert es.',
+    'fr': 'Cette valeur est trop longue: <code>%s</code> symboles. Saisissez une valeur ne dépassant pas <code>%s</code> symboles et cela fonctionnera.',
+    'ua': 'Це <b>занадто довге</b> значення: <code>%s</code> символів. Введіть значення не довше за <code>%s</code> символів, і воно працюватиме.',
+    'pl': 'To jest <b>zbyt długa</b> wartość: <code>%s</code> symboli. Wprowadź coś nie dłuższego niż <code>%s</code> symboli i zadziała.',
+    'jp': 'この値は<b>長すぎます: <code>%s</code>文字です。<code>%s</code>文字以内の値を入力すると正常に動作します。',
+    'kr': '이 값은 <b>너무 깁니다: <code>%s</code>자. <code>%s</code>자 이하로 입력하면 됩니다.',
+}
+
+def too_long_value(message, actual: int, maximum: int) -> str:
+    '''"This is <b>too long</b> value: <code>?</code> symbols.
+    Enter something not longer than <code>?</code> symbols and it will work." in different languages'''
+    lang: str = message.from_user.language_code or 'en'
+    default: str = TOO_LONG_MESSAGE_ERROR['en']
+    return TOO_LONG_MESSAGE_ERROR.get(lang, default) % (actual, maximum)
+
+
+
+# Сообщить, что взаимодействие с личным профилем невозможно,
+# поскольку искомого профиля несуществует.
 PROFILE_NOT_FOUND_ERROR = {
     'en': 'Can not find this user info. Register using the following command: <b>/register</b>.',
     'ru': 'Информация о пользователе не найдена. Зарегестрируйтесь командой <b>/register</b>.',
@@ -30,8 +60,6 @@ PROFILE_NOT_FOUND_ERROR = {
     'fr': 'Impossible de trouver les informations de cet utilisateur. Inscrivez-vous avec la commande suivante: <b>/register</b>.',
     'ua': 'Не вдається знайти інформацію про цього користувача. Зареєструйтесь за допомогою такої команди: <b>/register</b>.',
     'pl': 'Nie można znaleźć informacji o tym użytkowniku. Zarejestruj się za pomocą następującego polecenia: <b>/register</b>.',
-    'ar': 'لم يتم العثور على معلومات هذا المستخدم. سجّل باستخدام الأمر التالي: <b>/register</b>.',
-    'ch': '找不到此用户信息。请使用以下命令注册：<b>/register</b>。',
     'jp': 'このユーザー情報が見つかりません。次のコマンドを使用して登録してください: <b>/register</b>',
     'kr': '이 사용자 정보를 찾을 수 없습니다. 다음 명령을 사용하여 등록하세요: <b>/register</b>.',
 }
@@ -44,13 +72,12 @@ PROFILE_NOT_FOUND_ERROR_NOT_OWN = {
     'fr': 'Impossible de trouver les informations de cet utilisateur.',
     'ua': 'Не вдається знайти інформацію про цього користувача.',
     'pl': 'Nie można znaleźć informacji o tym użytkowniku.',
-    'ar': 'لم يتم العثور على معلومات هذا المستخدم.',
-    'ch': '找不到该用户信息。',
     'jp': 'このユーザー情報が見つかりません。',
     'kr': '이 사용자 정보를 찾을 수 없습니다.',
 }
 
 def profile_not_found(message, own: bool = False) -> str:
+    '''"Can not find this user info. Register using the following command: <b>/register</b>." in different languages'''
     reference: dict = PROFILE_NOT_FOUND_ERROR if own else PROFILE_NOT_FOUND_ERROR_NOT_OWN
     lang: str = message.from_user.language_code or 'en'
     default: str = reference['en']
@@ -58,32 +85,74 @@ def profile_not_found(message, own: bool = False) -> str:
 
 
 
-HELP = {
-    'ru': '''Основные функции:
+# Сообщить, что пользователю отказано в регистрации,
+# поскольку он уже был зарегестрирован.
+PROFILE_ALREADY_EXISTS_ERROR = {
+    'en': 'You had been registered in M.A.S. already.',
+    'ru': 'Вы уже зарегестрированы в боте.',
+    'sp': 'Usted ya estaba registrado en el M.A.S.',
+    'de': 'Sie waren bereits im M.A.S. eingeschrieben.',
+    'fr': 'Vous étiez déjà inscrit au M.A.S.',
+    'ua': 'Ви вже були зареєстровані в M.A.S.',
+    'pl': 'Byłeś już zarejestrowany w M.A.S.',
+    'jp': 'あなたはすでにM.A.S.に登録されていました。',
+    'kr': '당신은 이미 M.A.S.에 등록되어 있었습니다.',
+}
 
+def frofile_exists_already(message) -> str:
+    lang: str = message.from_user.language_code or 'en'
+    default: str = PROFILE_ALREADY_EXISTS_ERROR['en']
+    return PROFILE_ALREADY_EXISTS_ERROR.get(lang, default)
+
+
+
+# Сообщить, что ник нарушает правила регстрации и
+# вместо указанного использован ник, взятый из message
+INCORRECT_NAME_WARNING = {
+    'en': 'This name can not be accepted due to a serious violation of the form for registering an account. Your Telegram name is set as the name: <b>%s</b>.\n<i>To change your data, use the following command /profile</i>',
+    'ru': 'Данный ник не может быть принят ввиду серьёзного нарушения формы регистрации аккаунта. В качестве имени установлен Ваше имя из Telegram: <b>%s</b>.\n<i>Чтобы поменять свои данные, воспользуйтесь /profile</i>',
+    'sp': 'Este nombre no se puede aceptar debido a una infracción grave del formulario de registro de cuenta. Tu nombre de Telegram es <b>%s</b>. <i>Para cambiar tus datos, usa el siguiente comando: /profile</i>.',
+    'de': 'Dieser Name kann aufgrund eines schwerwiegenden Verstoßes gegen das Formular zur Kontoregistrierung nicht akzeptiert werden. Ihr Telegrammname ist als Name festgelegt: <b>%s</b>.\n<i>Um Ihre Daten zu ändern, verwenden Sie den folgenden Befehl /profile</i>',
+    'fr': "Ce nom ne peut être accepté en raison d'une violation grave du formulaire d'inscription. Votre nom Telegram est défini comme: <b>%s</b>.\n<i>Pour modifier vos données, utilisez la commande suivante: /profile</i>",
+    'ua': 'Цей нік не може бути прийнятий через серйозне порушення форми реєстрації облікового запису. В якості імені встановлено Ваше імя з Telegram: <b>%s</b>.\n<i>Щоб змінити свої дані, скористайтесь /profile</i>',
+    'pl': 'Ta nazwa nie może zostać zaakceptowana z powodu poważnego naruszenia formularza rejestracji konta. Twoja nazwa Telegram jest ustawiona jako nazwa: <b>%s</b>.\n<i>Aby zmienić swoje dane, użyj następującego polecenia /profile</i>',
+    'jp': 'この名前はアカウント登録フォームに重大な違反があるため、受け付けられません。Telegram名は<b>%s</b>に設定されています。\n<i>データを変更するには、次のコマンド/profileを使用してください</i>',
+    'kr': '계정 등록 양식을 심각하게 위반하여 이 이름을 사용할 수 없습니다. Telegram 이름이 <b>%s</b>(으)로 설정되어 있습니다.\n<i>데이터를 변경하려면 다음 명령어를 사용하세요. /profile</i>',
+}
+
+def incorrect_name(message) -> str:
+    lang: str = message.from_user.language_code or 'en'
+    default: str = INCORRECT_NAME_WARNING['en']
+    return INCORRECT_NAME_WARNING.get(lang, default) % message.from_user.full_name
+
+
+
+# Рассказать о существующих командах или предложить справку.
+HELP_TEXT_GENERAL = {
+    'ru': '''Основные функции:\n
 <b>/schedule</b> - вывод расписания пар;
 <b>/exam</b> - вопросы и ответы к экзаменам;
 <b>/profile</b> - просмотр и редактирование профиля;
 <b>/feedback</b> - отзывы на что-либо;
-<b>/mute</b> - выдача мута в беседах.
-
+<b>/mute</b> - выдача мута в беседах.\n
 <i>Чтобы получить более подробную справку по конкретной команде, используйте</i> <code>/команда ?</code>. <i>Например,</i> <code>/schedule ?</code>.''',
 
-    'en': '''Essential modules:
-
+    'en': '''Essential modules:\n
 <b>/schedule</b> - display the lessons schedule;
 <b>/exam</b> - answers for the exams;
 <b>/profile</b> - edit the profile;
 <b>/feedback</b> - feedbacks for anything;
-<b>/mute</b> - mute users in group chats.
-
+<b>/mute</b> - mute users in group chats.\n
 <i>In order to get more info about each command use</i> <code>/command ?</code>. <i>Example:</i> <code>/schedule ?</code>.'''
 }
 
-def help_text(message) -> str:
+def help_text(message, module: str) -> str:
+    reference = {
+        'general': HELP_TEXT_GENERAL,
+    } [module]
     lang: str = message.from_user.language_code or 'en'
-    default: str = HELP['en']
-    return HELP.get(lang, default)
+    default: str = reference['en']
+    return reference.get(lang, default)
 
 
 
@@ -118,14 +187,23 @@ REG_2 = {
 4. Используя бота, вы и только вы несёте ответсвенность за свои действия.
 Запрещено искать уязвимости бота, пытаться дестабилизировать его хостинг и совершать с ним любые аморальные действия.
 В качестве наказания за нарушения правил может применяться блокировка определённых команд для пользователя.\n
-<b>Шаг 2/3:</b> Если вы ознакомлены и согласны с этими условиями, отправьте в чат "<code>Ознакомлен, согласен</code>" или "<code>Ознакомлена, согласна</code>".'''
+<b>Шаг 2/3:</b> Если вы ознакомлены и согласны с этими условиями, отправьте в чат "<code>Ознакомлен, согласен</code>" или "<code>Ознакомлена, согласна</code>".''',
+
+    'en': '''You...''',
+
+    'sp': '''Tu...''',
 }
 
 REG_3 = {
     'ru': '''<b>Данные сохранены!</b>\n
 <i>Теперь вы можете использовать весь функционал бота.
 Выберете "Помощь по всем командам" в Меню или используйте <code>/help</code>, чтобы получить справку по командам.</i>\n
-<b>Шаг 3/3:</b> Выберете свою группу из списка.'''
+<b>Шаг 3/3:</b> Выберете свою группу из списка.''',
+
+    'en': '''<b>Your data was saved succesfuly!</b>\n
+<i>Now you can use...
+</i>\n
+<b>Step 3/3:</b> Select your group.''',
 }
 
 def reg_text(message, stage: int) -> str:
@@ -202,6 +280,41 @@ FEEDBACKS_HELP = {
 }
 
 
+
+
+ATTENDANCE_HANDLING_MSG = {
+    'en': '...',
+    'ru': 'Отправьте своё местоположение для подтверждения посещения пары.\n\nДля отправки местоположения нужно использовать кнопку <i><b>"Отправить местоположение для отметки"</b></i> внизу экрана. Она отправит запрос на отправку локации, необходимо разрешить боту её использовать.',
+}
+
+ATTENDANCE_BUTTON_TEXT = {
+    'en': '...',
+    'ru': 'Отправить местоположение для отметки',
+}
+
+ATTENDANCE_AWAIT_ERROR = {
+    'en': '...',
+    'ru': 'Вы уже ввели команду для отметки и теперь должны отправить геопозицию. Данная функция работает только на мобильных устройствах (Android, iPhone, iPad, Windows Phone). Если локацию отправить не получается, разрешите в настройках устройства доступ к геолокации для Telegram и перезапустите его.',
+}
+
+ATTENDANCE_CANT_FIND_USER_ERROR = {
+    'en': '...',
+    'ru': 'Невозможно определить Ваше посещение, поскольку Вы не зарегестрированы. Зарегестрируйтесь командой /register',
+}
+
+def attendance_text(message, stage: str) -> str:
+    reference = {
+        'handle': ATTENDANCE_HANDLING_MSG,
+        'button': ATTENDANCE_BUTTON_TEXT,
+        'await': ATTENDANCE_AWAIT_ERROR,
+        'cannotfind': ATTENDANCE_CANT_FIND_USER_ERROR
+    } [stage]
+    lang: str = message.from_user.language_code or 'en'
+    default: str = reference['en']
+    return reference.get(lang, default)
+
+
+
 POSSIBLE_KEYBOARDS = {
     'ru': 'Доступные клавиатуры:\n',
     'en': 'Possible keyboards:\n'
@@ -212,10 +325,19 @@ PREVIEW_KEYBOARDS = {
     'en': 'Preview of the keyboard'
 }
 
+def dev_keyboard_preview(message, operation: str) -> str:
+    reference = {
+        'possible': POSSIBLE_KEYBOARDS,
+        'preview': PREVIEW_KEYBOARDS
+    } [operation]
+    lang: str = message.from_user.language_code or 'en'
+    default: str = reference['en']
+    return reference.get(lang, default)
+
 
 PROFILE_UTIL_DELETED_V = {
-    'en': "You have disconnected the user from M.A.S. I don't parse his profile anymore but You can recover it via host server.",
-    'ru': 'Вы отключили профиль пользователя.',
+    'en': "You have disconnected the user from M.A.S. I don't parse his profile anymore but You can recover it via host server...",
+    'ru': 'Вы отключили профиль пользователя ',
 }
 
 PROFILE_UTIL_DELETED_F = {
@@ -223,3 +345,34 @@ PROFILE_UTIL_DELETED_F = {
     'ru': 'Вы физически (безвозвратно) удалили профиль пользователя.',
 
 }
+
+
+
+FILL_SCHEDULE_INSTRUCTION_TEXT = {
+    'en': '',
+
+    'ru': '''<b>Инструкция:</b>\n\n1. Откройте <a href="https://rasp.rea.ru/?q=15.30д-ю05%2F22б#today">эту страницу</a> с компьютера;\n
+2. Используйте <code>Ctrl + A</code> для выделения;\n
+3. Используйте <code>Ctrl + C</code> для копирования;\n
+4. Отправьте в этот чат то, что скопировалось.\n\n
+<i>Копируйте то расписание, которое вы хотите вставить для своей группы. Бот сам разберётся, что куда записать.</i>\n\n''',
+
+    'sp': ''
+}
+
+def fill_schedule_instruction(message):
+    lang: str = message.from_user.language_code or 'en'
+    default: str = FILL_SCHEDULE_INSTRUCTION_TEXT['en']
+    return FILL_SCHEDULE_INSTRUCTION_TEXT.get(lang, default)
+
+
+
+SCHEDULE_ATTENDANCE_REPORT_BAR = {
+    'en': '\n\n🟩 = Your visit is recorded\n🟥 = Not recorded\n\n 💡 Use the following command to register your attendance <b>/attend</b>.',
+    'ru': '\n\n🟩 = Посещение записано\n🟥 = Посещение не записано\n\n 💡 Используйте /attend, чтобы записаться.',
+}
+
+def attendance_bar(message) -> str:
+    lang: str = message.from_user.language_code or 'en'
+    default: str = SCHEDULE_ATTENDANCE_REPORT_BAR['en']
+    return SCHEDULE_ATTENDANCE_REPORT_BAR.get(lang, default)
