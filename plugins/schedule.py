@@ -41,10 +41,31 @@ LESSON_7_END   = time (20, 29) # 20:29
 LESSON_8_START = time (20, 30) # 20:30
 LESSON_8_END   = time (23, 59) # 23:59
 
+
 TIMINGS = {1: ('8:30', '10:00'), 2: ('10:10', '11:40'), 3: ('11:50', '13:20'),  # дневные (1-3) до большой перемены
            3.5: ('13:20', '14:00'),                                             # большая перемена
            4: ('14:00', '15:30'), 5: ('15:40', '17:10'), 6: ('17:20', '18:50'), # дневные (4-6) после большой перемены
            7: ('18:55', '20:25'), 8: ('20:30', '22:00')}                        # вечерние (7-8)
+
+
+SERAVEK_BOLD_200 = ImageFont.truetype('fonts/Seravek-Bold.otf', 200)
+SERAVEK_BOLD_100 = ImageFont.truetype('fonts/Seravek-Bold.otf', 100)
+SERAVEK_BOLD_80 = ImageFont.truetype('fonts/Seravek-Bold.otf', 80)
+SERAVEK_BOLD_70 = ImageFont.truetype('fonts/Seravek-Bold.otf', 70)
+SERAVEK_BOLD_50 = ImageFont.truetype('fonts/Seravek-Bold.otf', 50)
+UNCAGE_MEDIUM_80 = ImageFont.truetype ('fonts/UNCAGE-Medium.ttf', 80)
+SUPERIOR_MEDIUM_50 = ImageFont.truetype('fonts/LTSuperior-Medium.otf', 50)
+OFONT_60 = ImageFont.truetype('fonts/ofont.ru_D231.ttf', 60)
+
+
+IMG_NAMES = {'Понедельник': 'Monday_Image.png',
+                'Вторник': 'Tuesday_Image.png',
+                'Среда': 'Wednesday_Image.png',
+                'Четверг': 'Thursday_Image.png',
+                'Пятница': 'Friday_Image.png',
+                'Суббота': 'Saturday_Image.png',
+                'Воскресенье': 'Sunday_Image.png'}
+
 
 class Schedule:
     '''Хранит данные о расписании в self.data. Пример: Schedule (12345, '11.11.2011', 1).data -> ( (?, ?), (?, ?) )\n
@@ -180,7 +201,7 @@ class Schedule:
         connection.close ()
 
     @staticmethod
-    def create_schedule (name: str = 'schedule'):
+    def create_schedule(name: str = 'schedule') -> str:
         '''Проверяет наличие таблицы schedule и создаёт её при условии отсутствия.\n
         Применять когда есть шанс, что таблицы нет - позволяет избежать ошибку.'''
 
@@ -208,6 +229,8 @@ class Schedule:
         
         cur.close()
         conn.close()
+
+        return 'Вы создали таблицу расписания.'
 
     @staticmethod
     def setup (lesson_date: str,
@@ -400,24 +423,15 @@ class Schedule:
         Параметры метода: указать цвет, модификатор (в днях) 
         и посетителя для окраски квадратиков слева.'''
 
-        IMG_NAMES = {'Понедельник': 'Monday_Image.png',
-                     'Вторник': 'Tuesday_Image.png',
-                     'Среда': 'Wednesday_Image.png',
-                     'Четверг': 'Thursday_Image.png',
-                     'Пятница': 'Friday_Image.png',
-                     'Суббота': 'Saturday_Image.png',
-                     'Воскресенье': 'Sunday_Image.png'}
-
         cycles_were_passed = 0
-        modified_date = adjust_date (self.lesson_date, week_modifier)
+        modified_date = adjust_date(self.lesson_date, week_modifier)
 
-        for day in Schedule (group_id = self.group_id, lesson_date = modified_date).collect_schedule (return_arr = True):
+        for day in Schedule(group_id = self.group_id, lesson_date = modified_date).collect_schedule(return_arr = True):
             day_of_week = None
             date = None
 
-            days_list = list (collect_schedule_week_selection_helper (
-                    date = self.lesson_date, week_modifier = week_modifier
-                ).values ())
+            days_list = list (collect_schedule_week_selection_helper(
+                    date = self.lesson_date, week_modifier = week_modifier).values ())
 
             if len (day) > 0:
                 day_of_week = day [0] ['day_of_week']
@@ -434,26 +448,16 @@ class Schedule:
                 img = Image.open (f'background_templates/{color}_{day_of_week}.jpg')
                 
             else:
-                img = Image.new (mode = 'RGBA', size = (2000, 2000), color = clr (color) ['bg'])
+                img = Image.new(mode='RGBA', size=(2000, 2000), color=clr(color)['bg'])
 
-            ImageDraw.Draw (img).text (
-                xy = (400, 10),
-                text = (day_of_week),
-                fill = (clr (color) ['text']),
-                font = ImageFont.truetype ('fonts/Seravek-Bold.otf', 100))
-
-            ImageDraw.Draw(img).text(
-                xy = (1100, 38),
-                text = (date),
-                fill = (clr (color) ['ol']),
-                font = ImageFont.truetype ('fonts/Seravek-Bold.otf', 70))
+            ImageDraw.Draw(img).text(xy=(400, 10), text=(day_of_week), fill=(clr(color)['text']), font=SERAVEK_BOLD_100)
+            ImageDraw.Draw(img).text(xy=(1100, 38), text=(date), fill=(clr(color)['ol']), font=SERAVEK_BOLD_70)
 
             lesson_modifier = 0
             for lesson in day:
 
-                attend_color = clr (color) ['non_attend']
-                if attender in lesson ['attendance']:
-                    attend_color = clr (color) ['attend']
+                _color_seletor = 'attend' if attender in lesson['attendance'] else 'non_attend'
+                attend_color = clr(color)[_color_seletor]
 
                 ImageDraw.Draw (img).rectangle(
                     xy = (
@@ -463,19 +467,12 @@ class Schedule:
                         400 + lesson_modifier  # Высота вторая
                     ),
                     fill = (attend_color),
-                    outline = (clr (color)['ol'])
-                )
+                    outline = (clr (color)['ol']))
 
                 ImageDraw.Draw (img).rectangle(
-                    xy = (
-                        320,
-                        140 + lesson_modifier,
-                        1990,
-                        400 + lesson_modifier
-                    ),
+                    xy = (320, 140+lesson_modifier, 1990, 400+lesson_modifier),
                     fill = (clr (color)['frame']),
-                    outline = (clr (color)['ol'])
-                )
+                    outline = (clr (color)['ol']))
 
                 if len (lesson ['lesson_name']) > 28:
                     lesson ['lesson_name'] = ''.join (el for el in lesson ['lesson_name'] [0:27]) + '...'
@@ -484,76 +481,48 @@ class Schedule:
                 l_pos_1 = TIMINGS [lesson ['lesson_position']] [0]
                 l_pos_2 = TIMINGS [lesson ['lesson_position']] [1]
 
-                ImageDraw.Draw (img).text (
-                    xy = (50, 175 + lesson_modifier),
-                    text = l_pos_1 + '\n' + l_pos_2,
-                    fill = (clr (color) ['timings']),
-                    font = ImageFont.truetype ('fonts/UNCAGE-Medium.ttf', 80),
-                    align = 'right'
-                )
-
-                ImageDraw.Draw (img).text (
-                    xy = (330, 145 + lesson_modifier),
-                    text = lesson ['lesson_name'],
-                    fill = (clr (color)['text']),
-                    font = ImageFont.truetype ('fonts/Seravek-Bold.otf', 80)
-                )
+                ImageDraw.Draw(img).text(xy=(50, 175+lesson_modifier), text=l_pos_1+'\n'+l_pos_2, fill=(clr(color)['timings']), font=UNCAGE_MEDIUM_80, align='right')
+                ImageDraw.Draw(img).text(xy=(330, 145+lesson_modifier), text=lesson['lesson_name'], fill=(clr(color)['text']), font=SERAVEK_BOLD_80)
 
                 lesson_homework = lesson ['lesson_homework']
                 if lesson_homework == '?':
                     lesson_homework = ''
 
                 if len (lesson_homework) in range (41, 82):
-                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'] [0:41]) + '\n'
-                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'] [41:82]).strip()
+                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'][0:41]) + '\n'
+                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'][41:82]).strip()
                 
                 elif len (lesson_homework) in range (82, 123):
-                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'] [0:41]) + '\n'
-                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'] [41:82]).strip() + '\n'
-                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'] [82:123]).strip()
+                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'][0:41]) + '\n'
+                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'][41:82]).strip() + '\n'
+                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'][82:123]).strip()
 
                 elif len (lesson_homework) > 122:
-                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'] [0:41]) + '\n'
-                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'] [41:82]).strip() + '\n'
-                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'] [82:123]).strip() + '...'
+                    lesson_homework = ''.join (el for el in lesson ['lesson_homework'][0:41]) + '\n'
+                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'][41:82]).strip() + '\n'
+                    lesson_homework += ''.join (el for el in lesson ['lesson_homework'][82:123]).strip() + '...'
                 
-                ImageDraw.Draw (img).text (
-                    xy = (330, 240 + lesson_modifier),
-                    text = lesson_homework,
-                    fill = (clr (color)['ol']),
-                    font = ImageFont.truetype ('fonts/ofont.ru_D231.ttf', 60)
-                )
+                ImageDraw.Draw(img).text(xy=(330, 240+lesson_modifier), text=lesson_homework, fill=(clr(color)['ol']), font=OFONT_60)
 
                 ImageDraw.Draw (img).text (
-                    xy = (1900 - len (lesson ['lesson_place'].replace(' ', '')) * 24, 160 + lesson_modifier),
-                    text = lesson ['lesson_place'].strip(),
-                    fill = (clr (color)['ol']),
-                    font = ImageFont.truetype ('fonts/Seravek-Bold.otf', 50),
-                    align = 'right'
-                )
+                    xy = (1900 - len (lesson['lesson_place'].replace(' ', '')) * 24, 160 + lesson_modifier),
+                    text=lesson ['lesson_place'].strip(), fill=(clr(color)['ol']), font=SERAVEK_BOLD_50, align='right')
 
-                lesson_type = '\n'.join(word for word in lesson ['lesson_type'].split())
+                lesson_type = '\n'.join(word for word in lesson['lesson_type'].split())
 
-                ImageDraw.Draw (img).text (
-                    xy = (1900 - 20 * max (len (word) for word in lesson_type.splitlines()), 220 + lesson_modifier),
-                    text = lesson_type,
-                    fill = (clr (color)['ol']),
-                    font = ImageFont.truetype ('fonts/LTSuperior-Medium.otf', 50),
-                    align = 'right'
-                )
+                ImageDraw.Draw(img).text (
+                    xy=(1900 - 20 * max (len (word) for word in lesson_type.splitlines()), 220 + lesson_modifier),
+                    text=lesson_type, fill=(clr(color)['ol']), font=SUPERIOR_MEDIUM_50, align='right')
 
                 lesson_modifier += 300
 
             if len (day) == 0:
-                ImageDraw.Draw(img).text(xy = (400, 800),
-                    text = ('Занятий нет'),
-                    fill = (clr (color) ['text']),
-                        font = ImageFont.truetype ('fonts/Seravek-Bold.otf', 200))
+                ImageDraw.Draw(img).text(xy=(400, 800), text=('Занятий нет'), fill=(clr(color)['text']), font=SERAVEK_BOLD_200)
 
             #monday_stream = io.BytesIO()
             #Monday_Image.save(monday_stream, format='PNG')
             #monday_stream.seek(0)
-            img.save(f'rendered_schedule/{IMG_NAMES [day_of_week]}')
+            img.save(f'rendered_schedule/{IMG_NAMES[day_of_week]}')
             
             cycles_were_passed += 1
 
@@ -561,7 +530,7 @@ class Schedule:
             'date': date,
             'week_modifier': week_modifier,
             'report': 'Расписание сохранение, ошибки не обнаружено.',
-            'reply': f'<b>{self.group_name}</b> | <code>{days_list [0]} - {days_list [5]}</code>\n\n🟩 = Посещение записано\n🟥 = Посещение не записано\n\n 💡 Используйте /attend, чтобы записаться.'
+            'reply': f'<b>{self.group_name}</b> | <code>{days_list[0]} - {days_list[5]}</code>'
         }
 
     def delete (self, operation: str = 'delete'):
