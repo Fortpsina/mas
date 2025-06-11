@@ -29,36 +29,27 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 @bot.message_handler(commands=['start', 'reg', 'register'])
+@basic_cmd_logger
 def start(message):
+    new_user = UserProfile(message.from_user.id)
+    assert not new_user.exists, frofile_exists_already(message)
+
     if CONTROL_USERS_TABLE:
         create_table("users")
         reg_notify(message)
 
-    new_user = UserProfile(message.from_user.id)
-
-    if new_user.exists:
-        bot.reply_to(message, f'Вы уже зарегестрированы в боте.')
-        return
+    register_user(message)
 
     bot.send_message(message.chat.id, reg_text(message, 1), parse_mode='html')
-    register_user(message)
     bot.register_next_step_handler(message, user_name, new_user)
 
 def user_name(message, new_user: UserProfile):
     _name_params = name_helper(message.text.strip())
-    
-    if not _name_params['correct'] and CONTROL_NAMES_DURING_REG:
-        bot.reply_to(message, _name_params['reply'], parse_mode='html')
-        bot.reply_to(message, 'Данный ник не может быть принят, но я всё равно Вас зарегестрирую. Чтобы поменять свои данные, воспользуйтесь /profile')
-        return
-    
-    emoji = "🔥" if "удалены" not in _name_params['reply'].lower() else "🤡"
-    
-    bot.set_message_reaction(chat_id=message.chat.id, message_id=message.id,
-        reaction=[ReactionTypeEmoji(emoji=emoji)])
-    
     new_user.update('name', _name_params['name'])
-    
+
+    emoji = "🔥" if  not _name_params['anything_was_deleted'] else "🤡"
+    emoji_reaction(message, emoji)
+
     bot.send_message(message.chat.id, reg_text(message, 2), parse_mode='html')
     bot.register_next_step_handler(message, user_pass, new_user)
 
@@ -68,17 +59,15 @@ def user_pass(message, new_user: UserProfile):
 
 
 @bot.message_handler(commands = ['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
+@basic_cmd_logger
 def help(message):
-    print(who_is_requestor(message)[0])
-    bot.reply_to(message, HELP.get(message.from_user.language_code, HELP['en']), parse_mode='html')
+    bot.reply_to(message, help_text(message, 'general'), parse_mode='html')
 
 
 @bot.message_handler (commands = ['fill'])
+@basic_cmd_logger
 def update_the_schedule_step_1 (message):
-    print (who_is_requestor (message = message) [0])
-
-    bot.reply_to (
-        message = message,
+    bot.reply_to (message = message,
         text = '<b>Инструкция:</b>\n\n1. Откройте <a href="https://rasp.rea.ru/?q=15.30д-ю05%2F22б#today">эту страницу</a> с компьютера;\n' +
         '2. Используйте <code>Ctrl + A</code> для выделения;\n' +
         '3. Используйте <code>Ctrl + C</code> для копирования;\n' +
@@ -89,7 +78,6 @@ def update_the_schedule_step_1 (message):
     bot.register_next_step_handler(message, update_the_schedule_step_2)
 
 def update_the_schedule_step_2 (message):
-
     requestors_group = who_is_requestor (message) [1]
 
     if requestors_group in range (0, 11):
@@ -101,26 +89,24 @@ def update_the_schedule_step_2 (message):
 
 @bot.message_handler (commands = ['attend'])
 def attend (message):
-    HANDLING_MSG = 'Отправьте своё местоположение для подтверждения посещения пары. \n\nДля отправки местоположения нужно использовать кнопку <i><b>"Отправить местоположение для отметки"</b></i> внизу экрана. Она отправит запрос на отправку локации, необходимо разрешить боту её использовать.'
     global expect_geo
     if message.from_user.id in expect_geo:
-        bot.reply_to(message, 'Вы уже ввели команду для отметки и теперь должны отправить геопозицию. Данная функция работает только на мобильных устройствах (Android, iPhone, iPad, Windows Phone). Если локацию отправить не получается, разрешите в настройках устройства доступ к геолокации для Telegram и перезапустите его.')
+        bot.reply_to(message, attendance_text(message, 'await'))
         return
     expect_geo.append(message.from_user.id)
 
     keyboard = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    keyboard.add(types.KeyboardButton(text = "Отправить местоположение для отметки", request_location = True))
+    keyboard.add(types.KeyboardButton(text = attendance_text(message, 'button'), request_location = True))
 
-    bot.reply_to (message, text = HANDLING_MSG, reply_markup = keyboard, parse_mode = 'html')
+    bot.reply_to (message, text = attendance_text(message, 'handle'), reply_markup = keyboard, parse_mode = 'html')
 
 
 @bot.message_handler(content_types=['location'])
 def location_handler(message):
     requestor = UserProfile(message.from_user.id)
     if not requestor.exists:
-        bot.reply_to(message, "Невозможно определить Ваше посещение, поскольку Вы не зарегестрированы. Зарегестрируйтесь командой /register")
+        bot.reply_to(message, attendance_text(message, 'cannotfind'))
         return
-    print (f'{requestor.user_name} отправил(а) геопозицию для отметки в расписании.')
 
     geo = GeoRequest(message)
 
@@ -144,12 +130,12 @@ def attendance (message):
 
 
 @bot.message_handler (commands = ['schedule', 's', 'с', 'расписание', 'р'])
+@basic_cmd_logger
 def schedule (message):
     requestor = UserProfile(message.from_user.id)
     if not requestor.exists:
         bot.reply_to(message, "Не могу определить Вашу группу, поскольку Вы не зарегестрированы. Зарегестрируйтесь командой /register")
         return
-    print(f"{requestor.user_name}: {message.text}")
     
     week_modifier = 0
     lesson_date = datetime.now().strftime('%d.%m.20%y')
@@ -195,8 +181,8 @@ def settings(message):
 
 
 @bot.message_handler(commands=['dev'])
+@basic_cmd_logger
 def lookup(message):
-    print (who_is_requestor(message)[0])
     command = message.text.split()
     _lang = message.from_user.language_code
 
@@ -240,9 +226,8 @@ def lookup(message):
 
 
 @bot.message_handler(commands = ['profile', 'prof', 'профиль'])
+@basic_cmd_logger
 def interactive_profile(message):
-    print(who_is_requestor(message)[0])
-
     cmd = message.text.split()
     _id = message.from_user.id
     _own_prifile = True
@@ -255,10 +240,7 @@ def interactive_profile(message):
         _own_prifile = False
 
     profile = UserProfile(_id)
-
-    if not profile.exists:
-        bot.reply_to(message, profile_not_found(message, _own_prifile))
-        return
+    assert profile.exists, profile_not_found(message, _own_prifile)
     
     _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
     _to_reply += f"  Группа: <code>{profile.user_group}</code>\n"
@@ -270,66 +252,28 @@ def interactive_profile(message):
     bot.reply_to(message, _to_reply, parse_mode = 'html',
                     reply_markup = profile_options_markup(_own_prifile, message.from_user.id in admin_id))
 
-def set_new_profile_name (message):
+@basic_cmd_logger
+def set_new_profile_name(message):
     profile = UserProfile(message.from_user.id)
 
-    if not profile.exists:
-        bot.reply_to(message, profile_not_found(message, True), parse_mode = 'html')
-        return
+    assert profile.exists, profile_not_found(message, True)
 
-    _new_name = name_helper(message.text.strip())
-    _new_name_content = _new_name['name']
+    new_name = name_helper(message.text.strip())['name']
+    bot.reply_to(message, profile.update('name', new_name), parse_mode = 'html')
 
-    if not _new_name['correct']:
-        bot.reply_to(message, _new_name['reply'], parse_mode = 'html')
-        return
-    
-    conn = sqlite3.connect('database.sql')
-    cur = conn.cursor()
+@basic_cmd_logger
+def set_new_profile_vk(message):
+    profile = UserProfile(message.from_user.id)
 
-    cur.execute(f'UPDATE users SET name = "{_new_name_content}" WHERE user_id = {profile.user_id}')
-    conn.commit()
+    assert profile.exists, profile_not_found(message, True)
+    assert len(message.text) < 48, 'Слишком длинное значение. Укажите не более 48-и символов'
 
-    bot.reply_to(message, f'Вы успешно изменили имя с <b>{profile.user_name}</b> на <b>{_new_name_content}</b>.\n\n', parse_mode = 'html')
-    Fortpsinabot.send_message(428192863, f'<b>{profile.user_name}</b> ({message.from_user.id}) изменил имя на <b>{_new_name_content}</b>.', parse_mode = 'html')
-
-    cur.close()
-    conn.close()
-
-def set_new_profile_vk (message):
-    new_profile_vk = message.text.strip()
-
-    if len(message.text) > 48:
-        bot.reply_to(message, 'Слишком длинное значение. Укажите не более 48-и символов')
-        return
-
-    elif 'https://vk.com/' not in message.text:
-        bot.reply_to(message, 'Неверный формат ссылки. Попробуйте скопировать её из адресной строки с вашей страницей или поделиться профилем.\n\nПример: <code>https://vk.com/andrewmartinoff</code>', parse_mode = 'html')
-        return
-
-    else:
-        conn = sqlite3.connect('database.sql')
-        cur = conn.cursor()
-
-        cur.execute(f'SELECT name FROM users WHERE user_id = {message.from_user.id}')
-        
-        if not cur.fetchone():
-            bot.reply_to(message, profile_not_found(message, True), parse_mode = 'html')
-
-        else:
-            cur.execute(f'UPDATE users SET pass = "{new_profile_vk}" WHERE user_id = {message.from_user.id}')
-            conn.commit()
-            bot.reply_to(message, f'Вы успешно изменили ссылку на вк на <code>{new_profile_vk}</code>.\n\n', parse_mode = 'html')
-
-        cur.close()
-        conn.close()
+    bot.reply_to(message, profile.update('vk_link', message.text.strip()))
 
 
 @bot.message_handler (commands = ['exam'])
+@basic_cmd_logger
 def find_answer_for_exam (message):
-    print(who_is_requestor(message = message)[0])
-    _language = message.from_user.language_code
-
     exams = json.load(open('answers.json', 'r'))
 
     all_tags = []
@@ -615,8 +559,8 @@ def set_tasks_for_exam (message, discipline):
 
 
 @bot.message_handler(commands=['examanswer'])
+@basic_cmd_logger
 def examanswer (message):
-    print (who_is_requestor (message)[0])
     try:
         if len (message.text.split()) < 4:
             bot.reply_to(message, f'Формат команды: <code>/examanswer [Предмет] [Номер вопроса] [Ответ]</code>\n\n{"<i>Как администратор, вы можете использовать <b>cstory</b> вместо аргумента [Ответ], чтобы удалить историю редактирований ответа.</i>" if message.from_user.id in admin_id else ""}', parse_mode = 'html')
@@ -861,9 +805,8 @@ def pun_append (punnished_id, reason, pun_author, pun_type, first_date, pun_time
 
 
 @bot.message_handler (commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
+@basic_cmd_logger
 def feedback_menu (message):
-    print (who_is_requestor (message)[0])
-
     if len (message.text.split()) == 1:
         bot.reply_to (message=message, text=FEEDBACKS_HELP, reply_markup = feedback_markup(), parse_mode = 'html')
 
