@@ -32,6 +32,7 @@ HS_STRUCT = """CREATE TABLE IF NOT EXISTS Hs
 GROUP_STRUCT = """CREATE TABLE IF NOT EXISTS Groups 
     (id INTEGER PRIMARY KEY,
     name TEXT,
+    dicection TEXT,
     students TEXT,
     mail_adress TEXT,
     mail_password INTEGER,
@@ -111,13 +112,10 @@ class UserProfile:
         
         db_lock = Lock()
         with db_lock:
-            self.cur.execute(f'SELECT ? FROM Users WHERE user_id = ?', (column, self.user_id))
-            old_value = self.cur.fetchone()[0] or "?"
-
             self.cur.execute(f'UPDATE Users SET {column} = ? WHERE user_id = ?', (new_value, self.user_id))
             self.conn.commit()
 
-            return f"Значение изменено с {old_value} на {new_value}."
+            return f"Значение изменено на {new_value}."
         
     def delete(self, physically: bool = False) -> str:
         if not self.exists:
@@ -143,6 +141,10 @@ class UserProfile:
         self.cur.close()
         self.conn.close()
 
+class Username:
+    def __init__(self, message):
+        self.user_profile = UserProfile(message.from_user.id)
+        self.name = self.user_profile if self.user_profile.exists else message.from_user.full_name
 
 def register_user(message, **custom_data) -> None:
     conn = connect('database.sql')
@@ -187,6 +189,7 @@ def register_group(message, **custom_data) -> None:
     cur = conn.cursor()
 
     _n = custom_data.get("name",       message.from_user.full_name)
+    _a = custom_data.get("direction",  message.from_user.full_name)
     _v = custom_data.get("vk_link",    "https://vk.com/example")
     _c = custom_data.get("color",      "default")
     _h = custom_data.get("hs_name",    "УЗ не указано")
@@ -196,8 +199,8 @@ def register_group(message, **custom_data) -> None:
     _p = custom_data.get("papers",     "")
     _i = custom_data.get("founder_id", message.from_user.id)
 
-    cur.execute('INSERT INTO Groups (name, students, mail_adress, mail_password, hs_name, hs_struct, prom, papers, founder_id) ' +
-                f'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (_n, _v, _c, _h, _s, _g, _d, _p, _i))
+    cur.execute('INSERT INTO Groups (name, direction, students, mail_adress, mail_password, hs_name, hs_struct, prom, papers, founder_id) ' +
+                f'VALUES (?, ? ?, ?, ?, ?, ?, ?, ?)', (_n, _a, _v, _c, _h, _s, _g, _d, _p, _i))
     conn.commit()
 
     cur.close()
