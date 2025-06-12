@@ -32,13 +32,20 @@ if str(PROJECT_ROOT) not in sys.path:
 @basic_cmd_logger
 def start(message):
     new_user = UserProfile(message.from_user.id)
-    assert not new_user.exists, frofile_exists_already(message)
+
+    if len(message.text.split()) == 2 and new_user.rights >= 4:
+        return bot.reply_to(message, register_another_user(
+            int(message.text.split()[1])))
+    
+    if new_user.exists:
+        raise ProfileAlreadyExistsError(frofile_exists_already(message))
 
     if CONTROL_USERS_TABLE:
         create_table("users")
         reg_notify(message)
 
-    register_user(message)
+    register_user(message.from_user.full_name, message.from_user.id)
+    new_user.exists = True
 
     bot.send_message(message.chat.id, reg_text(message, 1), parse_mode='html')
     bot.register_next_step_handler(message, user_name, new_user)
@@ -56,6 +63,16 @@ def user_name(message, new_user: UserProfile):
 def user_pass(message, new_user: UserProfile):
     new_user.update('conditions', message.text.strip())
     bot.send_message (message.chat.id, reg_text(message, 3), parse_mode = 'html', reply_markup = select_hs_markup())
+
+@bot.message_handler(commands=['forcereg'])
+def forcereg(message):
+    if message.from_user.id == fortpsina_id:
+        create_table("users")
+        register_user(message.from_user.full_name,
+                      message.from_user.id,
+                      conditions = 'Ознакомлен, согласен',
+                      rights = 5)
+        bot.reply_to(message, 'Пользователь зарегестрирован.')
 
 
 @bot.message_handler(commands=['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
@@ -75,7 +92,7 @@ def update_the_schedule_step_2 (message):
     bot.reply_to (message, Schedule.fill_week(message.text, requestors_group), parse_mode='html')
 
 
-@bot.message_handler (commands = ['attend'])
+@bot.message_handler(commands=['attend'])
 def attend (message):
     global expect_geo
     if message.from_user.id in expect_geo:
@@ -117,11 +134,13 @@ def attendance(message):
     bot.reply_to(message, Schedule(group_id=user.user_group).attendance())
 
 
-@bot.message_handler (commands = ['schedule', 's', 'с', 'расписание', 'р'])
+@bot.message_handler(commands=['schedule', 's', 'с', 'расписание', 'р'])
 @basic_cmd_logger
 def schedule (message):
     requestor = UserProfile(message.from_user.id)
-    assert requestor.exists, profile_not_found(message, True)
+
+    if not requestor.exists:
+        raise ProfileNotFoundError(profile_not_found(message, True))
     
     week_modifier = 0
     lesson_date = datetime.now().strftime('%d.%m.20%y')
@@ -183,8 +202,16 @@ def dev_tools(message):
         bot.reply_to(message, UserProfile(int(command[2])).update('rights_level', int(command[3])))
 
     elif len(command) > 2 and command[1] == 'delete':
-        assert user.rights >= 4, not_enough_rights(message)
-        bot.reply_to(message, UserProfile(int(command[2])).delete(len(command)>3 and command[3]=="physically"), parse_mode='html')
+        to_delete = UserProfile(int(command[2]))
+
+        if not user.rights >= 4:
+            raise NotEnoughRightsError(not_enough_rights(message))
+        
+        elif not to_delete.exists:
+            raise ProfileNotFoundError(profile_not_found(message, False))
+        
+        physically = len(command) == 4 and command[3] == "physically"
+        bot.reply_to(message, to_delete.delete(physically), parse_mode='html')
 
     elif command[1] == 'id':
         bot.reply_to(message, f'<code>{message.from_user.id}</code>', parse_mode='html')
@@ -206,11 +233,11 @@ def dev_tools(message):
         
         bot.send_message(message.chat.id, dev_keyboard_preview(message, "preview"), reply_markup=_possible_markups.get(command[2])())
 
-    elif user.rights >= 5 and command[1] == "execute":
+    elif user.rights == 5 and command[1] == "execute":
         exec(message.text.replace('/dev execute ', '', 1))
 
 
-@bot.message_handler(commands = ['profile', 'prof', 'профиль'])
+@bot.message_handler(commands=['profile', 'prof', 'профиль'])
 @basic_cmd_logger
 def interactive_profile(message):
     cmd = message.text.split()
@@ -256,7 +283,7 @@ def set_new_profile_vk(message):
     bot.reply_to(message, profile.update('vk_link', message.text.strip()))
 
 
-@bot.message_handler (commands = ['exam'])
+@bot.message_handler(commands=['exam'])
 @basic_cmd_logger
 def find_answer_for_exam (message):
     exams = json.load(open('answers.json', 'r'))
@@ -269,29 +296,115 @@ def find_answer_for_exam (message):
         for tag in el ['tags']:
             all_tags.append (tag)
 
-    try:
-        if len (message.text.split()) == 1:
-            exam_type_choosing = InlineKeyboardMarkup(row_width = 1)
+    if len (message.text.split()) == 1:
+        exam_type_choosing = InlineKeyboardMarkup(row_width = 1)
 
-            for el in exams: # какие экзамены бывают
-                exam_type_choosing.add(InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
+        for el in exams: # какие экзамены бывают
+            exam_type_choosing.add(InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
 
-            bot.reply_to(message, EXAM_HELP, parse_mode = 'html', reply_markup = exam_type_choosing)
+        bot.reply_to(message, EXAM_HELP, parse_mode = 'html', reply_markup = exam_type_choosing)
 
-        elif len (message.text.split()) == 2 and message.text.split()[1].lower() == 'config':
-            bot.reply_to (message, EXAM_CONFIGS + exams)
+    elif len (message.text.split()) == 2 and message.text.split()[1].lower() == 'config':
+        bot.reply_to (message, EXAM_CONFIGS + exams)
 
-        elif len (message.text.split()) > 2 and message.text.split()[1].lower() == 'delete':
-            if len (message.text.split()) == 2 or len (message.text.split()) > 3 or message.text.split()[2] not in all_tags:
-                bot.reply_to(message, EXAM_NOT_EXISTING_TAG_ERROR, parse_mode = 'html')
-                return
-
-            bot.reply_to(message, not_enough_rights(message))
+    elif len (message.text.split()) > 2 and message.text.split()[1].lower() == 'delete':
+        if len (message.text.split()) == 2 or len (message.text.split()) > 3 or message.text.split()[2] not in all_tags:
+            bot.reply_to(message, EXAM_NOT_EXISTING_TAG_ERROR, parse_mode = 'html')
             return
 
-        elif len (message.text.split()) == 2 and message.text.split()[1].lower() in all_tags:
+        bot.reply_to(message, not_enough_rights(message))
+        return
+
+    elif len (message.text.split()) == 2 and message.text.split()[1].lower() in all_tags:
+        for el in exams:
+            if message.text.split()[1] in el['tags']:
+
+                conn = sqlite3.connect(f'{el["file"]}.sql')
+                cur = conn.cursor()
+
+                cur.execute('SELECT * FROM exam_tasks')
+                tasks = cur.fetchall()
+
+                i = len (tasks)
+                index_of_task = 0
+                q = tasks[index_of_task]
+
+                previous_task = InlineKeyboardButton(text = '⬅️', callback_data = f'task previous {index_of_task} {el["file"]}')
+                edit_task = InlineKeyboardButton(text = '✏️', callback_data = f'task edit {index_of_task} {el["file"]}')
+                next_task = InlineKeyboardButton(text = '➡️', callback_data = f'task next {index_of_task} {el["file"]}')
+
+                task_menu = InlineKeyboardMarkup()
+                task_menu.row(previous_task, edit_task, next_task)
+                print (task_menu)
+
+                text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n{q[2]}\n\n<i>{q[3]}</i>\n\n{q[4]}'
+
+                cur.close()
+                conn.close()
+
+                bot.reply_to (message, text_to_reply, parse_mode = 'html', reply_markup = task_menu)
+
+    elif len(message.text) >= 3 and message.text.split()[2].lower() in all_tags and message.text.split()[1].lower() in ("q", "questions", "question"):
+        for el in exams:
+            if message.text.split()[2] in el['tags']:
+                _filename = el['file']
+                conn = sqlite3.connect(f'{_filename}.sql')
+                cur = conn.cursor()
+                cur.execute('SELECT task_id, question, authors FROM exam_tasks')
+
+                _name_dp = el['name_dp']
+                to_reply = f"Вопросы к <b>{_name_dp}</b>:\n"
+                all_tasks = cur.fetchall()
+
+                chunk_size = 4000
+
+                for _task in all_tasks:
+                    _has_answer = "✅" if len(_task[2]) > 15 else "❌"
+                    _numeration = "" if _task[1].strip()[0].isdigit() else f"{_task[0]}. "
+                    #_do_wraping: bool = (len(to_reply) + len(_task) + 13 <= chunk_size) or (len(to_reply) > chunk_size and chunk_size + len(_task) + 13 <= chunk_size*2)
+                    #wraping_entry = "<code>" if _do_wraping else ""
+                    #wraping_exit = "</code>" if _do_wraping else ""
+                    to_reply += f"{_numeration}{_task[1].strip()} | {_has_answer}\n"
+                to_reply += "\n(галочкой отмечены вопросы с ответами, крестиком - без ответов)"
+
+                if len(to_reply) <= chunk_size:
+                    bot.reply_to(message, to_reply, parse_mode="html")
+                else:
+                    chunks = [to_reply[i:i+chunk_size] for i in range(0, len(to_reply), chunk_size)]
+
+                    # Первое сообщение отправляем как reply
+                    bot.reply_to(message, chunks[0], parse_mode="html")
+
+                    # Остальные части отправляем как новые сообщения
+                    for chunk in chunks[1:]:
+                        bot.send_message(message.chat.id, chunk, parse_mode="html")
+
+                cur.close()
+                conn.close()
+                return
+
+        else:
+            bot.reply_to(message, f"Не удалось найти экзамен по запросу <code>{message.text.split()[2].lower()}</code>", parse_mode="html")
+
+    elif len (message.text.split()) == 3 and message.text.split()[2].isnumeric():
+        task_number = message.text.split()[2]
+        exam_type = message.text.split()[1]
+
+        if exam_type not in all_tags:
+
+            to_reply = ''
             for el in exams:
-                if message.text.split()[1] in el['tags']:
+                to_reply += f'\n<b>{el["name"]}</b>: '
+                for tag in el['tags']:
+                    to_reply += f'<code>{tag}</code>, '
+
+            bot.reply_to(message, f'Доступные предметы:\n{to_reply}\n\n<i>Используйте один из алиасов, выделенных <code>моноширинным</code> шрифтом. Их можно скопировать при нажатии.</i>', parse_mode = 'html')
+            return
+
+        for el in exams:
+
+            for tag in el['tags']:
+                if tag == exam_type:
 
                     conn = sqlite3.connect(f'{el["file"]}.sql')
                     cur = conn.cursor()
@@ -299,196 +412,105 @@ def find_answer_for_exam (message):
                     cur.execute('SELECT * FROM exam_tasks')
                     tasks = cur.fetchall()
 
-                    i = len (tasks)
-                    index_of_task = 0
-                    q = tasks[index_of_task]
+                    if int (task_number) > len (tasks):
+                        bot.reply_to(message, f'По <b>{el["name_dp"]}</b> существует всего <b>{len(tasks)}</b> вопросов.', parse_mode = 'html')
+                        return
 
-                    previous_task = InlineKeyboardButton(text = '⬅️', callback_data = f'task previous {index_of_task} {el["file"]}')
-                    edit_task = InlineKeyboardButton(text = '✏️', callback_data = f'task edit {index_of_task} {el["file"]}')
-                    next_task = InlineKeyboardButton(text = '➡️', callback_data = f'task next {index_of_task} {el["file"]}')
-
-                    task_menu = InlineKeyboardMarkup()
-                    task_menu.row(previous_task, edit_task, next_task)
-                    print (task_menu)
-
-                    text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n{q[2]}\n\n<i>{q[3]}</i>\n\n{q[4]}'
+                    for task in tasks:
+                        if int (task_number) == int (task[1]):
+                            bot.reply_to(message, f'<b>Вопрос №{task_number}. <code>{task[2]}</code></b>\n\n<i>{task[3]}</i>\n\n{task[4]}', parse_mode = 'html')
 
                     cur.close()
                     conn.close()
 
-                    bot.reply_to (message, text_to_reply, parse_mode = 'html', reply_markup = task_menu)
+    elif len (message.text.split()) >= 3 and message.text.split()[1].lower() == 'set':
+        discipline = message.text.replace('/exam set ', '')
+        max_name_len = 24
 
-        elif len(message.text) >= 3 and message.text.split()[2].lower() in all_tags and message.text.split()[1].lower() in ("q", "questions", "question"):
-            for el in exams:
-                if message.text.split()[2] in el['tags']:
-                    _filename = el['file']
-                    conn = sqlite3.connect(f'{_filename}.sql')
-                    cur = conn.cursor()
-                    cur.execute('SELECT task_id, question, authors FROM exam_tasks')
+        if len (discipline) > max_name_len:
+            optional_name_offer_1 = ''
+            optional_name_offer_2 = ''
+            optional_name_offer_3 = ''
 
-                    _name_dp = el['name_dp']
-                    to_reply = f"Вопросы к <b>{_name_dp}</b>:\n"
-                    all_tasks = cur.fetchall()
+            optional_name_offer_1 += discipline[0].upper()
+            for el in discipline[1:max_name_len - 1]:
+                optional_name_offer_1 += el
 
-                    chunk_size = 4000
+            for el in discipline.split():
+                if len (optional_name_offer_2) + len (el) <= max_name_len:
+                    optional_name_offer_2 += f'{el}'.replace(f'{el[0]}', f'{el[0].upper()}')
 
-                    for _task in all_tasks:
-                        _has_answer = "✅" if len(_task[2]) > 15 else "❌"
-                        _numeration = "" if _task[1].strip()[0].isdigit() else f"{_task[0]}. "
-                        #_do_wraping: bool = (len(to_reply) + len(_task) + 13 <= chunk_size) or (len(to_reply) > chunk_size and chunk_size + len(_task) + 13 <= chunk_size*2)
-                        #wraping_entry = "<code>" if _do_wraping else ""
-                        #wraping_exit = "</code>" if _do_wraping else ""
-                        to_reply += f"{_numeration}{_task[1].strip()} | {_has_answer}\n"
-                    to_reply += "\n(галочкой отмечены вопросы с ответами, крестиком - без ответов)"
 
-                    if len(to_reply) <= chunk_size:
-                        bot.reply_to(message, to_reply, parse_mode="html")
-                    else:
-                        chunks = [to_reply[i:i+chunk_size] for i in range(0, len(to_reply), chunk_size)]
-
-                        # Первое сообщение отправляем как reply
-                        bot.reply_to(message, chunks[0], parse_mode="html")
-
-                        # Остальные части отправляем как новые сообщения
-                        for chunk in chunks[1:]:
-                            bot.send_message(message.chat.id, chunk, parse_mode="html")
-
-                    cur.close()
-                    conn.close()
-                    return
-
-            else:
-                bot.reply_to(message, f"Не удалось найти экзамен по запросу <code>{message.text.split()[2].lower()}</code>", parse_mode="html")
-
-        elif len (message.text.split()) == 3 and message.text.split()[2].isnumeric():
-            task_number = message.text.split()[2]
-            exam_type = message.text.split()[1]
-
-            if exam_type not in all_tags:
-
-                to_reply = ''
-                for el in exams:
-                    to_reply += f'\n<b>{el["name"]}</b>: '
-                    for tag in el['tags']:
-                        to_reply += f'<code>{tag}</code>, '
-
-                bot.reply_to(message, f'Доступные предметы:\n{to_reply}\n\n<i>Используйте один из алиасов, выделенных <code>моноширинным</code> шрифтом. Их можно скопировать при нажатии.</i>', parse_mode = 'html')
-                return
-
-            for el in exams:
-
-                for tag in el['tags']:
-                    if tag == exam_type:
-
-                        conn = sqlite3.connect(f'{el["file"]}.sql')
-                        cur = conn.cursor()
-
-                        cur.execute('SELECT * FROM exam_tasks')
-                        tasks = cur.fetchall()
-
-                        if int (task_number) > len (tasks):
-                            bot.reply_to(message, f'По <b>{el["name_dp"]}</b> существует всего <b>{len(tasks)}</b> вопросов.', parse_mode = 'html')
-                            return
-
-                        for task in tasks:
-                            if int (task_number) == int (task[1]):
-                                bot.reply_to(message, f'<b>Вопрос №{task_number}. <code>{task[2]}</code></b>\n\n<i>{task[3]}</i>\n\n{task[4]}', parse_mode = 'html')
-
-                        cur.close()
-                        conn.close()
-
-        elif len (message.text.split()) >= 3 and message.text.split()[1].lower() == 'set':
-            discipline = message.text.replace('/exam set ', '')
-            max_name_len = 24
-
-            if len (discipline) > max_name_len:
-                optional_name_offer_1 = ''
-                optional_name_offer_2 = ''
-                optional_name_offer_3 = ''
-
-                optional_name_offer_1 += discipline[0].upper()
-                for el in discipline[1:max_name_len - 1]:
-                    optional_name_offer_1 += el
-
+            if 1 < len (discipline.split()) < max_name_len + 1:
                 for el in discipline.split():
-                    if len (optional_name_offer_2) + len (el) <= max_name_len:
-                        optional_name_offer_2 += f'{el}'.replace(f'{el[0]}', f'{el[0].upper()}')
+                    optional_name_offer_3 += el[0].upper()
+
+            bot.reply_to(message,
+                            f'Максимальная длина названия: <b>{max_name_len}</b>.\n' +
+                            f'Ваша длина: <b>{len(discipline)}</b>\n\n' +
+                            f'Предлагаю варианты:\n<code>{optional_name_offer_1}</code>\n' +
+                            f'<code>{optional_name_offer_2}</code>\n' +
+                            f'<code>{optional_name_offer_3}</code>',
+                            parse_mode = 'html')
+            return
 
 
-                if 1 < len (discipline.split()) < max_name_len + 1:
-                    for el in discipline.split():
-                        optional_name_offer_3 += el[0].upper()
+        try:
+            data = json.load (open('answers.json', 'r', encoding='utf-8'))
 
-                bot.reply_to(message,
-                             f'Максимальная длина названия: <b>{max_name_len}</b>.\n' +
-                             f'Ваша длина: <b>{len(discipline)}</b>\n\n' +
-                             f'Предлагаю варианты:\n<code>{optional_name_offer_1}</code>\n' +
-                             f'<code>{optional_name_offer_2}</code>\n' +
-                             f'<code>{optional_name_offer_3}</code>',
-                             parse_mode = 'html')
-                return
+        except json.JSONDecodeError:
+            data = []
 
+        for dict in data:
+            if discipline in dict.values ():
+                break
+        else:
+            data.append (tags_swither (discipline))
+            json.dump (data, open ('answers.json', 'w', encoding='utf-8'), ensure_ascii = False, indent = 4)
 
-            try:
-                data = json.load (open('answers.json', 'r', encoding='utf-8'))
+        bot.reply_to(message, f'Вы создали новую таблицу <b>"{discipline}"</b>.\n\nОтправьте в чат список вопросов по принципу заполнения плана.\n\n<b>Правила оформлени перечня:</b>\n<i>1. В списке НЕ должно быть номеров вопросов;\n2. В списке НЕ должно быть лишних отступов;\n3. Одна строчка = 1 вопрос;\n4. Избегайте любых ковычек, поскольку они ломают скрипты;\n5. Учитывайте, что перечень вопросов может быть больше максимальной длины сообщения. Если в одно сообщение не поместятся все вопросы, просто повторите команду <code>{message.text}</code> и отправьте только те вопросы, которые не поместились изначально - они будут добавлены к общему перечню.</i>', parse_mode = 'html')
 
-            except json.JSONDecodeError:
-                data = []
+        conn = sqlite3.connect(f'{discipline}.sql')
+        cur = conn.cursor()
 
-            for dict in data:
-                if discipline in dict.values ():
-                    break
-            else:
-                data.append (tags_swither (discipline))
-                json.dump (data, open ('answers.json', 'w', encoding='utf-8'), ensure_ascii = False, indent = 4)
+        cur.execute(
+            'CREATE TABLE IF NOT EXISTS exam_tasks ' +
+            '(id int auto_increment primary key, task_id INTEGER, question varshar(256), answer varshar(4096), authors varshar(512), is_deleted varshar (10))'
+        )
+        conn.commit()
 
-            bot.reply_to(message, f'Вы создали новую таблицу <b>"{discipline}"</b>.\n\nОтправьте в чат список вопросов по принципу заполнения плана.\n\n<b>Правила оформлени перечня:</b>\n<i>1. В списке НЕ должно быть номеров вопросов;\n2. В списке НЕ должно быть лишних отступов;\n3. Одна строчка = 1 вопрос;\n4. Избегайте любых ковычек, поскольку они ломают скрипты;\n5. Учитывайте, что перечень вопросов может быть больше максимальной длины сообщения. Если в одно сообщение не поместятся все вопросы, просто повторите команду <code>{message.text}</code> и отправьте только те вопросы, которые не поместились изначально - они будут добавлены к общему перечню.</i>', parse_mode = 'html')
+        cur.execute('SELECT * FROM exam_tasks')
+        tasks = cur.fetchall()
+        cur.close()
+        conn.close()
 
-            conn = sqlite3.connect(f'{discipline}.sql')
+        bot.register_next_step_handler (message, set_tasks_for_exam, discipline)
+
+    else:
+        request_key = message.text.replace('/exam ', '').lower()
+        all_results = []
+
+        for el in all_files:
+            conn = sqlite3.connect(f'{el}.sql')
             cur = conn.cursor()
-
-            cur.execute(
-                'CREATE TABLE IF NOT EXISTS exam_tasks ' +
-                '(id int auto_increment primary key, task_id INTEGER, question varshar(256), answer varshar(4096), authors varshar(512), is_deleted varshar (10))'
-            )
-            conn.commit()
 
             cur.execute('SELECT * FROM exam_tasks')
             tasks = cur.fetchall()
+
+            for task in tasks:
+                if request_key in task[2].lower():
+                    all_results.append(f'<code>{task[2]}</code>\n\n<i>{task[3]}</i>\n\n{task[4]}')
+
             cur.close()
             conn.close()
 
-            bot.register_next_step_handler (message, set_tasks_for_exam, discipline)
+        if len(all_results) > 20:
+            bot.reply_to(message, f'По запросу "<code>{request_key}</code>" найдено слишком много результатов: <b>{len(all_results)}</b>. Детализируйте свой поисковой запрос.', parse_mode = 'html')
+            return
 
-        else:
-            request_key = message.text.replace('/exam ', '').lower()
-            all_results = []
-
-            for el in all_files:
-                conn = sqlite3.connect(f'{el}.sql')
-                cur = conn.cursor()
-
-                cur.execute('SELECT * FROM exam_tasks')
-                tasks = cur.fetchall()
-
-                for task in tasks:
-                    if request_key in task[2].lower():
-                        all_results.append(f'<code>{task[2]}</code>\n\n<i>{task[3]}</i>\n\n{task[4]}')
-
-                cur.close()
-                conn.close()
-
-            if len(all_results) > 20:
-                bot.reply_to(message, f'По запросу "<code>{request_key}</code>" найдено слишком много результатов: <b>{len(all_results)}</b>. Детализируйте свой поисковой запрос.', parse_mode = 'html')
-                return
-
-            bot.reply_to(message, f'По запросу "{request_key}" найдено {len (all_results)} результатов.', parse_mode = 'html', disable_notification = True)
-            for el in all_results:
-                bot.send_message(message.chat.id, el, parse_mode = 'html', disable_notification = True)
-
-    except Exception as _ex:
-        print (_ex)
-        bot.reply_to(message, f'Произошла непредвиденная ошибка:\n{_ex}')
+        bot.reply_to(message, f'По запросу "{request_key}" найдено {len (all_results)} результатов.', parse_mode = 'html', disable_notification = True)
+        for el in all_results:
+            bot.send_message(message.chat.id, el, parse_mode = 'html', disable_notification = True)
 
 def set_tasks_for_exam (message, discipline):
     try:
@@ -552,7 +574,9 @@ def examanswer (message):
     RIGHTS_LEVEL_TO_DELETE_EDIT_STORY = 3
     ADMIN_TIP = "<i>Вы можете использовать <b>cstory</b> вместо аргумента [Ответ], чтобы удалить историю редактирований.</i>" if user.rights >= RIGHTS_LEVEL_TO_DELETE_EDIT_STORY else ""
     
-    assert user.exists, profile_not_found(message, True)
+    if not user.exists:
+        raise ProfileNotFoundError(profile_not_found(message, True))
+    
     assert len(cmd) >= 4, f'Формат команды: <code>/examanswer [Предмет] [Номер вопроса] [Ответ]</code>\n\n{ADMIN_TIP}'
 
     filename = cmd[1]
@@ -575,8 +599,10 @@ def examanswer (message):
     new_authors = f''
 
     if cmd[3] == 'cstory':
-        assert user.rights >= 3, not_enough_rights(message)
         new_authors = f'Записи о редакциях были удалены {date}'
+
+        if not user.rights >= 3:
+            raise NotEnoughRightsError(not_enough_rights(message))
 
     else:
         text_of_the_question = exam_task[2]
@@ -586,8 +612,8 @@ def examanswer (message):
     new_answer = ' '.join(message.text.split()[3:])
 
     if cmd[3] != 'cstory':
-        cur.execute(f'UPDATE exam_tasks SET answer = "{new_answer}" WHERE task_id = {task_id}')
-    cur.execute(f'UPDATE exam_tasks SET authors = "{new_authors}" WHERE task_id = {task_id}')
+        cur.execute('UPDATE exam_tasks SET answer = ? WHERE task_id = ?', (new_answer, task_id))
+    cur.execute('UPDATE exam_tasks SET authors = ? WHERE task_id = ?', (new_authors, task_id))
     conn.commit()
 
     bot.reply_to(message, f'{f"Установлен ответ на вопрос №{task_id} ({text_of_the_question})." if cmd[3] != "cstory" else "История изменений была удалена."}', parse_mode = 'html')
@@ -643,7 +669,7 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
         #bot.reply_to(message, f'Произошла непредвиденная ошибка{f": {_ex}" if len (str (_ex)) < 1000 else ""}')
 
 
-@bot.message_handler(commands = ['mute'])
+@bot.message_handler(commands=['mute'])
 def mute_user (message):
     _req = who_is_requestor(message)
     print(_req[0])
@@ -783,7 +809,7 @@ def pun_append (punnished_id, reason, pun_author, pun_type, first_date, pun_time
     json.dump(data, open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
 
 
-@bot.message_handler (commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
+@bot.message_handler(commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
 @basic_cmd_logger
 def feedback_menu (message):
     if len (message.text.split()) == 1:
@@ -920,141 +946,148 @@ def edit_feedback (message, feedback_id):
     bot.reply_to(message, 'Отзыв обновлён.')
 
 
+@basic_cmd_logger
+def register_hs_markup(message):
+    _organisation = Hs(message.from_user.id)
+
+    if message.text == 'cancel':
+        return bot.reply_to(message, 'Операция отменена.')
+    
+    if _organisation.exists:
+        return bot.reply_to(message, f'Вы уже создали свою организацию: <code>{_organisation}</code>.', parse_mode='html')
+    
+    del _organisation
+    if Hs(message.text).exists:
+        return bot.reply_to(message, 'Организация с таким названием уже существует.')
+    
+    register_hs(message)
+    bot.reply_to(message, f'Вы успешно создали организацию.')
+
+
 @bot.callback_query_handler(func = lambda call: True)
 def button_menu_universal_func(call):
-    requestor = UserProfile(call.message.chat.id).user_name or call.message.from_user.full_name
-    print(f'{requestor}: {call.data}')
+    requestor = UserProfile(call.message.chat.id)
+    name: str = requestor.user_name if requestor.exists else call.from_user.full_name
+    date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    _log: str = f'{date} | {name}: {call.data}'
+    print(_log)
+    logger.info(_log)
 
+    cmd: str = call.data.split()
 
     if 'choose_color_' in call.data:
         new_color = call.data.replace("choose_color_", "")
+        markup = color_chooser_markup() if requestor.exists else None
 
-        conn = sqlite3.connect('database.sql')
-        cur = conn.cursor()
-
-        cur.execute(f'UPDATE users SET color = "{new_color}" WHERE user_id = {call.message.chat.id}')
-        conn.commit()
-
-        if cur.rowcount == 0:
-            bot.send_message(call.message.chat.id, profile_not_found(call.message, True))
-
-        else:
-            bot.edit_message_text(f'Цветовая тема установлена: <b>{new_color}</b>', parse_mode='html',
-                chat_id = call.message.chat.id, message_id = call.message.id,
-                reply_markup = color_chooser_markup())
-
-        cur.close()
-        conn.close()
+        bot.edit_message_text(requestor.update('color', new_color),
+                              chat_id=call.message.chat.id,
+                              message_id=call.message.id,
+                              reply_markup=markup,
+                              parse_mode='html')
 
 
-    elif "geo" in call.data:
-        if call.data.split()[1] == "details":
-            lng = call.data.split()[2]
-            ltt = call.data.split()[3]
+    elif "geo" == cmd[0]:
+        if cmd[1] == "details":
+            lng = cmd[2]
+            ltt = cmd[3]
             query = f'Долгота: {lng}\nШирота: {ltt}\n\nЕсли данный отказ вызван ошибкой и на самом деле вы присутствуете, отправьте скриншот этого сообщения разработчику.'
             bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text = query)
 
 
-    elif 'task' in call.data:
-        try:
-            type_of_operation = call.data.split()[1]
-            index_of_task = int (call.data.split()[2])
-            filename = call.data.split()[3]
+    elif 'task' == cmd[0]:
+        type_of_operation = cmd[1]
+        index_of_task = int (cmd[2])
+        filename = cmd[3]
 
-            if len(call.data.split()) > 4:
-                filename = ' '.join(word for i, word in enumerate (call.data.split()) if i >= 3)
+        if len(cmd) > 4:
+            filename = ' '.join(word for i, word in enumerate (cmd) if i >= 3)
 
-            conn = sqlite3.connect(f'{filename}.sql')
-            cur = conn.cursor()
+        conn = sqlite3.connect(f'{filename}.sql')
+        cur = conn.cursor()
 
-            cur.execute('SELECT * FROM exam_tasks WHERE is_deleted = "False"')
-            tasks = cur.fetchall()
+        cur.execute('SELECT * FROM exam_tasks WHERE is_deleted = "False"')
+        tasks = cur.fetchall()
 
-            i = len (tasks)
+        i = len (tasks)
 
-            if type_of_operation == 'previous':
-                try:
-                    index_of_task -= 1
-                    if index_of_task < 0:
-                        index_of_task = i - 1
+        if type_of_operation == 'previous':
+            try:
+                index_of_task -= 1
+                if index_of_task < 0:
+                    index_of_task = i - 1
 
+                q = tasks[index_of_task]
+                answer_authors = q[4] if  len (q[4]) > 15 else ''
+                text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
+            except:
+                bot.send_message (call.message.chat.id, 'Не удалось найти вопросы. Возможно, они были удалены.')
+
+        elif type_of_operation == 'next':
+            try:
+                if index_of_task + 1 >= i:
+                    index_of_task = 0
                     q = tasks[index_of_task]
                     answer_authors = q[4] if  len (q[4]) > 15 else ''
                     text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
-                except:
-                    bot.send_message (call.message.chat.id, 'Не удалось найти вопросы. Возможно, они были удалены.')
 
-            elif type_of_operation == 'next':
-                try:
-                    if index_of_task + 1 >= i:
-                        index_of_task = 0
-                        q = tasks[index_of_task]
-                        answer_authors = q[4] if  len (q[4]) > 15 else ''
-                        text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
+                    #bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Вопрос {index_of_task + 2} не установлен.')
+                    #return
 
-                        #bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Вопрос {index_of_task + 2} не установлен.')
-                        #return
+                else:
+                    index_of_task += 1
+                    q = tasks[index_of_task]
+                    answer_authors = q[4] if  len (q[4]) > 15 else ''
+                    text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
+            except:
+                bot.send_message (call.message.chat.id, 'Не удалось найти вопросы. Возможно, они были удалены.')
 
-                    else:
-                        index_of_task += 1
-                        q = tasks[index_of_task]
-                        answer_authors = q[4] if  len (q[4]) > 15 else ''
-                        text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
-                except:
-                    bot.send_message (call.message.chat.id, 'Не удалось найти вопросы. Возможно, они были удалены.')
+        elif type_of_operation == 'edit':
+            temp_msg = bot.send_message (call.message.chat.id, f'Отправьте в чат свою версию решения. Вы будете добавлены в перечень авторов ответа. Постарайтесь ограничиться длиной в <b>3000</b> символов (чтобы сообщение могло корректно отобразиться в Telegram).\n\nВыбранная тема: <code>{tasks[index_of_task][2]}</code>', parse_mode = 'html')
+            bot.register_next_step_handler (call.message, examanswer_markup, call.data, requestor, temp_msg, filename, call)
 
-            elif type_of_operation == 'edit':
-                temp_msg = bot.send_message (call.message.chat.id, f'Отправьте в чат свою версию решения. Вы будете добавлены в перечень авторов ответа. Постарайтесь ограничиться длиной в <b>3000</b> символов (чтобы сообщение могло корректно отобразиться в Telegram).\n\nВыбранная тема: <code>{tasks[index_of_task][2]}</code>', parse_mode = 'html')
-                bot.register_next_step_handler (call.message, examanswer_markup, call.data, requestor, temp_msg, filename, call)
+        elif type_of_operation == 'delete':
+            for el in tasks:
+                if int (el[1]) == int (index_of_task + 1):
+                    cur.execute (f'DELETE FROM exam_tasks WHERE task_id = {int (el[1])}')
+                    conn.commit ()
 
-            elif type_of_operation == 'delete':
-                for el in tasks:
-                    if int (el[1]) == int (index_of_task + 1):
-                        cur.execute (f'DELETE FROM exam_tasks WHERE task_id = {int (el[1])}')
-                        conn.commit ()
+            bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Вопрос удалён.')
 
-                bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Вопрос удалён.')
+        q = tasks[index_of_task]
+        answer_authors = q[4] if len (q[4]) > 15 else ''
+        text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
 
-            q = tasks[index_of_task]
-            answer_authors = q[4] if len (q[4]) > 15 else ''
-            text_to_reply = f'Вопрос <b>{q[1]} / {i}</b>:\n<code>{q[2]}</code>\n\n<i>{q[3]}</i>\n\n{answer_authors}'
+        cur.close()
+        conn.close()
 
-            cur.close()
-            conn.close()
+        previous_task = InlineKeyboardButton(text = '⬅️', callback_data = f'task previous {index_of_task} {filename}')
+        edit_task = InlineKeyboardButton(text = '✏️', callback_data = f'task edit {index_of_task} {filename}')
+        next_task = InlineKeyboardButton(text = '➡️', callback_data = f'task next {index_of_task} {filename}')
 
-            previous_task = InlineKeyboardButton(text = '⬅️', callback_data = f'task previous {index_of_task} {filename}')
-            edit_task = InlineKeyboardButton(text = '✏️', callback_data = f'task edit {index_of_task} {filename}')
-            next_task = InlineKeyboardButton(text = '➡️', callback_data = f'task next {index_of_task} {filename}')
+        if call.message.chat.id in admin_id:
+            delete_task = InlineKeyboardButton(text = '🗑', callback_data = f'task delete {index_of_task} {filename}')
 
-            if call.message.chat.id in admin_id:
-                delete_task = InlineKeyboardButton(text = '🗑', callback_data = f'task delete {index_of_task} {filename}')
+        task_menu = InlineKeyboardMarkup()
 
-            task_menu = InlineKeyboardMarkup()
+        if call.message.chat.id in admin_id:
+            task_menu.row (previous_task, edit_task, delete_task, next_task)
+        else:
+            task_menu.row (previous_task, edit_task, next_task)
 
-            if call.message.chat.id in admin_id:
-                task_menu.row (previous_task, edit_task, delete_task, next_task)
-            else:
-                task_menu.row (previous_task, edit_task, next_task)
-
-            bot.edit_message_text (message_id = call.message.id, chat_id = call.message.chat.id, text = text_to_reply, parse_mode = 'html', reply_markup = task_menu)
-
-        except:
-            pass
+        bot.edit_message_text (message_id = call.message.id, chat_id = call.message.chat.id, text = text_to_reply, parse_mode = 'html', reply_markup = task_menu)
 
 
-    elif 'group' in call.data:
-        print (call.data.split()[2])
-
+    elif 'group' == cmd[0]:
         conn = sqlite3.connect('database.sql')
         cur = conn.cursor()
 
-        cur.execute(f'UPDATE users SET reserve_1 = "{call.data.split()[2]}" WHERE user_id = {call.message.chat.id}')
+        cur.execute(f'UPDATE users SET reserve_1 = "{cmd[2]}" WHERE user_id = {call.message.chat.id}')
         conn.commit()
 
         user_group_to_detect = 'Неизвестная группа'
 
         for group in groups:
-            if group['id'] == int (call.data.split()[2]):
+            if group['id'] == int (cmd[2]):
                 user_group_to_detect = group['name']
 
         bot.edit_message_text(message_id = call.message.message_id, chat_id = call.message.chat.id,
@@ -1064,88 +1097,88 @@ def button_menu_universal_func(call):
         conn.close()
 
 
-    elif 'profile' in call.data:
-        if 'change' in call.data.split()[1]:
-            if 'Name' == call.data.split()[2]:
+    elif 'profile' == cmd[0]:
+        if 'change' in cmd[1]:
+            if 'Name' == cmd[2]:
                 bot.send_message (call.message.chat.id, 'Укажите новое имя. В имени должна быть только 1 раскладка (или латиница или кириллица), не должно быть цифр и любых знаков, кроме нижнего подчёркивания и дефиса.')
                 bot.register_next_step_handler (call.message, set_new_profile_name)
 
-            elif 'VK' == call.data.split()[2]:
+            elif 'VK' == cmd[2]:
                 bot.send_message (call.message.chat.id, 'Укажите новую ссылку. Формат: <code>https://vk.com/example</code>.', parse_mode='html')
                 bot.register_next_step_handler (call.message, set_new_profile_vk)
 
-            elif 'Group' == call.data.split()[2]:
+            elif 'Group' == cmd[2]:
                 bot.edit_message_text(chat_id = call.message.chat.id, message_id = call.message.message_id,
                                         text = f'Выберете свою группу из списка.', reply_markup = select_hs_markup())
 
-            elif 'Color' == call.data.split()[2]:
+            elif 'Color' == cmd[2]:
                 bot.edit_message_text(chat_id = call.message.chat.id, message_id = call.message.message_id,
                                         text = '<b>Выберете цветовую тему:</b>', parse_mode = 'html', reply_markup = color_chooser_markup())
 
 
-    elif 'feedback' in call.data:
-        if call.data.split()[1] == 'send':
+    elif 'feedback' == cmd[0]:
+        if cmd[1] == 'send':
             bot.send_message (call.message.chat.id,
                 'Шаг 1/2. Укажите, на КОГО вы пишите отзыв.\n\n' +
                 '<b>Если вы найдёте нужный объект отзыва в списке ниже, скопируйте его, нажав на него.</b> Это позволит отнести текущий отзыв к группе отзывов по одной и той же теме, что в будущем может облегчить поиск.\n\n' +
                 f'{feedback_contents()}', parse_mode = 'html')
             bot.register_next_step_handler (call.message, set_new_feedback)
 
-        elif call.data.split()[1] == 'read':
+        elif cmd[1] == 'read':
             read_feedback(chat_id = call.message.chat.id,
                 summoned_by_cmd = False, message_id = call.message.id, feedback_id = 0)
 
-        elif call.data.split()[1] in ('like', 'dislike'):
+        elif cmd[1] in ('like', 'dislike'):
             conn = sqlite3.connect('feedback.sql')
             cur = conn.cursor()
 
-            if call.data.split()[1] == 'like':
-                cur.execute(f'SELECT positive_ratings FROM feedback WHERE feedback_id = {call.data.split()[2]}')
+            if cmd[1] == 'like':
+                cur.execute(f'SELECT positive_ratings FROM feedback WHERE feedback_id = {cmd[2]}')
                 old_value = str (cur.fetchall()[0][0])
                 if str(call.message.chat.id) not in old_value:
-                    Feedback().edit_feedback(feedback_id = call.data.split()[2],
+                    Feedback().edit_feedback(feedback_id = cmd[2],
                         column = 'positive_ratings', new_value = f'{old_value} {str(call.message.chat.id)}')
                 else:
-                    Feedback().edit_feedback (feedback_id = call.data.split()[2], column = 'positive_ratings',
+                    Feedback().edit_feedback (feedback_id = cmd[2], column = 'positive_ratings',
                         new_value = old_value.replace(f'{str(call.message.chat.id)}', ''))
                     
                 read_feedback(chat_id = call.message.chat.id,
-                    summoned_by_cmd = False, message_id = call.message.id, feedback_id = call.data.split()[2])
+                    summoned_by_cmd = False, message_id = call.message.id, feedback_id = cmd[2])
 
-            elif call.data.split()[1] == 'dislike':
-                cur.execute(f'SELECT negative_ratings FROM feedback WHERE feedback_id = {call.data.split()[2]}')
+            elif cmd[1] == 'dislike':
+                cur.execute(f'SELECT negative_ratings FROM feedback WHERE feedback_id = {cmd[2]}')
                 old_value = str (cur.fetchall()[0][0])
                 if str(call.message.chat.id) not in old_value:
-                    Feedback().edit_feedback(feedback_id = call.data.split()[2],
+                    Feedback().edit_feedback(feedback_id = cmd[2],
                         column = 'negative_ratings', new_value = f'{old_value} {str(call.message.chat.id)}')
                 else:
-                    Feedback().edit_feedback(feedback_id = call.data.split()[2],
+                    Feedback().edit_feedback(feedback_id = cmd[2],
                         column = 'negative_ratings', new_value = old_value.replace(f'{str(call.message.chat.id)}', ''))
                     
                 read_feedback (chat_id = call.message.chat.id,
-                    summoned_by_cmd = False, message_id = call.message.id, feedback_id = call.data.split()[2])
+                    summoned_by_cmd = False, message_id = call.message.id, feedback_id = cmd[2])
 
             cur.close()
             conn.close()
 
-        elif call.data.split()[1] in ('next', 'prev'):
+        elif cmd[1] in ('next', 'prev'):
             conn = sqlite3.connect('feedback.sql')
             cur = conn.cursor()
 
-            if call.data.split()[1] == 'next':
+            if cmd[1] == 'next':
                 try:
                     read_feedback(chat_id = call.message.chat.id,
-                        summoned_by_cmd = False, message_id = call.message.id, feedback_id = int (call.data.split()[2]) + 1)
+                        summoned_by_cmd = False, message_id = call.message.id, feedback_id = int (cmd[2]) + 1)
 
                 except IndexError:
                     read_feedback(chat_id = call.message.chat.id,
                         summoned_by_cmd = False, message_id = call.message.id, feedback_id = 0)
 
-            elif call.data.split()[1] == 'prev':
-                if int (call.data.split()[2]) > 0:
+            elif cmd[1] == 'prev':
+                if int (cmd[2]) > 0:
                     read_feedback (chat_id = call.message.chat.id,
                         summoned_by_cmd = False, message_id = call.message.id,
-                        feedback_id = int (call.data.split()[2]) - 1, backscroll = True)
+                        feedback_id = int (cmd[2]) - 1, backscroll = True)
 
                 else:
                     bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Вы на самом первом отзыве.')
@@ -1158,32 +1191,32 @@ def button_menu_universal_func(call):
             cur = conn.cursor ()
 
             if call.data.split () [1] == 'delete':
-                if int(call.data.split()[2]) == 0:
+                if int(cmd[2]) == 0:
                     bot.answer_callback_query (callback_query_id = call.id, show_alert = True, text = f'Это сообщение нельзя удалить.')
                     cur.close ()
                     conn.close ()
                     return
 
-                cur.execute(f'SELECT is_deleted FROM feedback WHERE feedback_id = {call.data.split()[2]}')
+                cur.execute(f'SELECT is_deleted FROM feedback WHERE feedback_id = {cmd[2]}')
                 feedback = cur.fetchall()[0]
                 if feedback[0] == 0:
-                    cur.execute(f'UPDATE feedback SET is_deleted = 1 WHERE feedback_id = {call.data.split()[2]}')
+                    cur.execute(f'UPDATE feedback SET is_deleted = 1 WHERE feedback_id = {cmd[2]}')
                     conn.commit()
-                    bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Сообщение №{call.data.split()[2]} успешно удалено.')
+                    bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Сообщение №{cmd[2]} успешно удалено.')
                 elif feedback[0] == 1:
-                    cur.execute(f'UPDATE feedback SET is_deleted = 0 WHERE feedback_id = {call.data.split()[2]}')
+                    cur.execute(f'UPDATE feedback SET is_deleted = 0 WHERE feedback_id = {cmd[2]}')
                     conn.commit()
-                    bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Сообщение №{call.data.split()[2]} успешно восстановлено.')
+                    bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Сообщение №{cmd[2]} успешно восстановлено.')
 
 
-            elif call.data.split()[1] == 'edit':
+            elif cmd[1] == 'edit':
                 bot.send_message (call.message.chat.id, 'Укажите новый текст отзыва.')
-                bot.register_next_step_handler (call.message, edit_feedback, call.data.split()[2])
+                bot.register_next_step_handler (call.message, edit_feedback, cmd[2])
 
             cur.close()
             conn.close()
 
-        elif call.data.split()[1] == 'guide':
+        elif cmd[1] == 'guide':
             bot.edit_message_text (
                 message_id = call.message.message_id,
                 chat_id = call.message.chat.id,
@@ -1200,6 +1233,14 @@ def button_menu_universal_func(call):
 
         else:
             bot.answer_callback_query(callback_query_id = call.id, show_alert = True, text=f'Произошла ошибка. Инструкции для запроса {call.data} не существует.')
+
+
+    elif 'hs' == cmd[0]:
+        if cmd[1] == 'add':
+            create_table('hs')
+            bot.send_message(call.message.chat.id, 'Сейчас Вы создаёте новую организацию. Укажите её название и в дальнейшем Вы сможете изменить другие параметры организации.\n\nВы не можете создать больше одной организации. Если вы хотите отменить её создание,  отправьте в чат "<code>cancel</code>".', parse_mode='html')
+            bot.register_next_step_handler(call.message, register_hs_markup)
+
 
 
 # @bot.message_handler(func = lambda message: True)
