@@ -1,16 +1,26 @@
 from sqlite3 import connect
 import logging
 from datetime import datetime
-from json import load
-from .user import UserProfile
-from .langs import not_enough_rights, profile_not_found
-from config import bot
+from random import randint, choice
 from telebot.types import ReactionTypeEmoji
+from config import *
+
+if __name__ == "__main__":
+    from user import UserProfile
+    from langs import not_enough_rights, profile_not_found
+else:
+    from .user import UserProfile
+    from .langs import not_enough_rights, profile_not_found
 
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler('logs.log'))
+
+
+class NotEnoughRightsError(Exception): pass
+class ProfileNotFoundError(Exception): pass
+class ProfileAlreadyExistsError(Exception): pass
 
 
 class GeoRequest:
@@ -24,7 +34,7 @@ class GeoRequest:
 def basic_universal_logger(user: UserProfile, message) -> None:
     name = user.user_name if user.exists else message.from_user.full_name
     date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    _log = f'{date} | {name}: {message.text}'
+    _log = f'{date} | [{user.user_id}] {name}: {message.text}'
 
     logger.info(_log)
     print(_log)
@@ -34,6 +44,9 @@ def basic_cmd_logger(func):
     def wrapper(message):
         user = UserProfile(message.from_user.id)
         basic_universal_logger(user, message)
+
+        if randint(0, RANDOM_EMODJI_CHANCE) == 1:
+            emoji_reaction(message, choice(RANDOM_EMOJI_EASTERN_EGG))
 
         if not user.exists or user.rights >= 1:
             try:
@@ -80,7 +93,7 @@ def emoji_reaction(message, emoji):
                              reaction=[ReactionTypeEmoji(emoji=emoji)])
 
 
-def who_is_requestor (message):
+def who_is_requestor(message):
     requestor = message.from_user.full_name
     date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
     group = None
