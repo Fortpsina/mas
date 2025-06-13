@@ -16,6 +16,7 @@ from plugins.markups import *
 from plugins.name_checker import *
 from plugins.langs import *
 from plugins.utils import *
+from plugins.chat_moder import *
 
 from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
@@ -302,7 +303,7 @@ def find_answer_for_exam (message):
         for el in exams: # какие экзамены бывают
             exam_type_choosing.add(InlineKeyboardButton(text = f'{el["name"]}', callback_data = f'task previous 1 {el["file"]}'))
 
-        bot.reply_to(message, EXAM_HELP, parse_mode = 'html', reply_markup = exam_type_choosing)
+        bot.reply_to(message, help_switcher(message, 'exam'), parse_mode = 'html', reply_markup = exam_type_choosing)
 
     elif len (message.text.split()) == 2 and message.text.split()[1].lower() == 'config':
         bot.reply_to (message, EXAM_CONFIGS + exams)
@@ -621,7 +622,6 @@ def examanswer (message):
     cur.close()
     conn.close()
 
-
 def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
 
     index_of_task = int (calldata.split()[2])
@@ -670,19 +670,18 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
 
 
 @bot.message_handler(commands=['mute'])
+@basic_cmd_logger
 def mute_user (message):
-    _req = who_is_requestor(message)
-    print(_req[0])
-
-    if message.from_user.id not in admin_id:
-        bot.reply_to (message, not_enough_rights(message))
-        return
-    
+    requestor = UserProfile(message.from_user.id)
     command = message.text.split()
-    reason = ''
 
+    if requestor.rights < 4:
+        raise NotEnoughRightsError(not_enough_rights(message))
+    
+    if len(command) < 3 or command[1] == '?':
+        raise CommandStructureError(help_switcher(message, 'mute'))
+    
     if len(command) > 1 and command [1] == 'wipe':
-
         try:
             pun_logs = json.load(open('punishments.json', 'r', encoding='utf-8'))
 
@@ -697,11 +696,6 @@ def mute_user (message):
 
         json.dump([], open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
 
-        return
-
-
-    if len (command) < 3:
-        bot.reply_to (message, 'Формат команды:\n<code>/mute [Пользователь*] [Время в секундах] [Причина]</code>\n\n*Указать можно одно из следующих значений:\n<i>1) Telegram ID (указан в расширенном профиле бота, если пользователь зарегестрирован, в противом случае можно проверить через консоль);\n2) Тэг пользователя (Можно скопировать через просмотр профиля в ТГ);\n3) Имя пользователя в Telegram, если его ID не отображается и Тэг в профиле скрыт.</i>', parse_mode = 'html')
         return
 
     reason = ''.join(command[2:]) or "Не указано"
@@ -727,7 +721,7 @@ def mute_user (message):
 
     pun_append (punnished_id = command[1],
                 reason = reason,
-                pun_author = _req[2],
+                pun_author = requestor.user_name,
                 pun_type = message.text.split()[0].replace('/', ''),
                 first_date = message.json['date'],
                 pun_time = int (command[2]),
@@ -779,35 +773,6 @@ def unmute_user (message):
         bot.reply_to(message, f'Не удалось найти мут с номером "{message.text.split()[1]}".')
         return
 
-def pun_append (punnished_id, reason, pun_author, pun_type, first_date, pun_time, second_date_readable):
-    try:
-        data = json.load(open('punishments.json', 'r', encoding='utf-8'))
-
-    except json.JSONDecodeError:
-        data = []
-
-    first_date_readable = f'{datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
-
-    if mas == True:
-        actual_time = datetime.now() + timedelta(hours=3)
-        first_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
-
-    data.append(
-        {
-            'punished_id': punnished_id,
-            'punishment_id': len(data),
-            'reason': reason,
-            'pun_author': pun_author,
-            'pun_type': pun_type,
-            'first_date': first_date,
-            'last_date': int (first_date) + pun_time,
-            'first_date_readable': first_date_readable,
-            'second_date_readable': second_date_readable,
-            'ignore_punishment': False
-        }
-    )
-    json.dump(data, open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
-
 
 @bot.message_handler(commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
 @basic_cmd_logger
@@ -852,7 +817,6 @@ def feedback_menu (message):
             conn.close()
 
 def read_feedback (chat_id, summoned_by_cmd: bool, message_id = None, feedback_id = 0, backscroll: bool = False):
-
     conn = sqlite3.connect('feedback.sql')
     cur = conn.cursor()
 
@@ -948,17 +912,16 @@ def edit_feedback (message, feedback_id):
 
 @basic_cmd_logger
 def register_hs_markup(message):
-    _organisation = Hs(message.from_user.id)
-
     if message.text == 'cancel':
-        return bot.reply_to(message, 'Операция отменена.')
+        emoji_reaction(message, '👌')
+        return
     
-    if _organisation.exists:
-        return bot.reply_to(message, f'Вы уже создали свою организацию: <code>{_organisation}</code>.', parse_mode='html')
+    MAX_NAME_LEN = 22
+    if len(message.text) > MAX_NAME_LEN:
+        raise HsRegistrationError(f'Слишком длинное название. Необходимо указать не более чем {MAX_NAME_LEN} символа.')
     
-    del _organisation
     if Hs(message.text).exists:
-        return bot.reply_to(message, 'Организация с таким названием уже существует.')
+        raise HsRegistrationError('Организация с таким названием уже существует.')
     
     register_hs(message)
     bot.reply_to(message, f'Вы успешно создали организацию.')
@@ -969,7 +932,7 @@ def button_menu_universal_func(call):
     requestor = UserProfile(call.message.chat.id)
     name: str = requestor.user_name if requestor.exists else call.from_user.full_name
     date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    _log: str = f'{date} | {name}: {call.data}'
+    _log: str = f'{date} | [{call.message.chat.id}] {name}: {call.data}'
     print(_log)
     logger.info(_log)
 
@@ -1237,10 +1200,42 @@ def button_menu_universal_func(call):
 
     elif 'hs' == cmd[0]:
         if cmd[1] == 'add':
+            _organisation = Hs(call.message.chat.id)
+
+            if _organisation.exists:
+                _org_name: str = _organisation.name
+                bot.send_message(call.message.chat.id, f'Вы уже создали свою организацию: <code>{_org_name}</code>.', parse_mode='html')
+                return
+            
             create_table('hs')
             bot.send_message(call.message.chat.id, 'Сейчас Вы создаёте новую организацию. Укажите её название и в дальнейшем Вы сможете изменить другие параметры организации.\n\nВы не можете создать больше одной организации. Если вы хотите отменить её создание,  отправьте в чат "<code>cancel</code>".', parse_mode='html')
             bot.register_next_step_handler(call.message, register_hs_markup)
+        
+        elif cmd[1] == 'options':
+            bot.send_message(call.message.chat.id, 'В разработке...')
 
+        elif cmd[1] == 'page':
+            bot.send_message(call.message.chat.id, 'В разработке...')
+
+        elif cmd[1] == 'counter':
+            bot.send_message(call.message.chat.id, 'В разработке...')
+
+        elif cmd[1] == 'view':
+            hs_name = ' '.join(cmd[2:])
+            bot.edit_message_text(
+                text=f'Выберете группу в организации "<code>{hs_name}</code>", либо создайте её.',
+                chat_id=call.message.chat.id, message_id=call.message.id,
+                parse_mode='html', reply_markup=select_group_markup())
+            
+    elif 'groups' == cmd[0]:
+        if cmd[1] == 'back':
+            bot.edit_message_text(
+                text=f'Выберете организацию или создайте её.',
+                chat_id=call.message.chat.id, message_id=call.message.id,
+                reply_markup=select_hs_markup())
+        
+        else:
+            bot.send_message(call.message.chat.id, 'В разработке...')
 
 
 # @bot.message_handler(func = lambda message: True)
