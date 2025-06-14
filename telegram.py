@@ -671,107 +671,44 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
 
 @bot.message_handler(commands=['mute'])
 @basic_cmd_logger
-def mute_user (message):
+def mute_user(message):
+    requestor = UserProfile(message.from_user.id)
+    command = message.text.split()
+    for_who, _time = command[1], command[2]
+    reason = ''.join(command[2:]) or '?'
+
+    if len(command) < 3 or command[1] == '?':
+        raise CommandStructureError(help_switcher(message, 'mute'))
+
+    if not requestor.exists:
+        raise ProfileNotFoundError(profile_not_found(message, True))
+    
+    elif requestor.rights < 4:
+        raise NotEnoughRightsError(not_enough_rights(message))
+
+    elif len(command) > 1 and command [1] == 'wipe':
+        bot.reply_to(message, pun_wipe(message))
+
+    else:
+        punishment = Mute(for_who=for_who, by_who=requestor.user_name, reason=reason, time=_time)
+        bot.reply_to(message, punishment.append(), parse_mode='html')
+
+@bot.message_handler(commands=['unmute'])
+@basic_cmd_logger
+def unmute_user (message):
     requestor = UserProfile(message.from_user.id)
     command = message.text.split()
 
-    if requestor.rights < 4:
+    if len(command) == 1 or command[1] == '?':
+        raise CommandStructureError(help_switcher(message, 'mute'))
+
+    if not requestor.exists:
+        raise ProfileNotFoundError(profile_not_found(message, True))
+    
+    elif requestor.rights < 4:
         raise NotEnoughRightsError(not_enough_rights(message))
     
-    if len(command) < 3 or command[1] == '?':
-        raise CommandStructureError(help_switcher(message, 'mute'))
-    
-    if len(command) > 1 and command [1] == 'wipe':
-        try:
-            pun_logs = json.load(open('punishments.json', 'r', encoding='utf-8'))
-
-        except json.JSONDecodeError:
-            pun_logs = []
-
-        bot.reply_to (message, 'Вы удалили все имеющиеся наказания. Отправляю вам их перечень.')
-
-        for el in pun_logs:
-            bot.send_message (message.from_user.id, f'{el}')
-            print (el)
-
-        json.dump([], open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
-
-        return
-
-    reason = ''.join(command[2:]) or "Не указано"
-
-    if not command[2].isdigit():
-        bot.reply_to (message, 'Укажите время мута в секундах.')
-        return
-
-    elif int(command[2]) > 315360000:
-        bot.reply_to(message, 'Максимальное время, на которое можно выдать мут:\n\n - <code>315360000</code> секунд \n - <code>10</code> лет.', parse_mode = 'html')
-        return
-
-    first_date_readable = f'{datetime.now().strftime("%d:%m:%Y %H:%M:%S")}'
-    if mas:
-        actual_time = datetime.now() + timedelta(hours=3)
-        first_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
-
-    second_date = datetime.now() + timedelta(seconds = int (command[2]))
-    second_date_readable = second_date.strftime("%d.%m.%Y %H:%M:%S")
-    if mas:
-        actual_time = datetime.now() + timedelta(hours=3) + timedelta(seconds = int (command[2]))
-        second_date_readable = f'{actual_time.strftime("%d.%m.%Y %H:%M:%S")}'
-
-    pun_append (punnished_id = command[1],
-                reason = reason,
-                pun_author = requestor.user_name,
-                pun_type = message.text.split()[0].replace('/', ''),
-                first_date = message.json['date'],
-                pun_time = int (command[2]),
-                second_date_readable = second_date_readable)
-
-
-    bot.reply_to(message, parse_mode = 'html',
-                 text=f'''Выдача мута пользователю {command[1]}:\n Причина: <code>{reason}</code>;\n\nНачало мута: <code>{first_date_readable}</code>\nКонец мута: <code>{second_date_readable}</code>''',)
-
-
-@bot.message_handler(commands=['unmute'])
-def unmute_user (message):
-    if message.from_user.id not in admin_id:
-        bot.reply_to(message, not_enough_rights(message))
-        return
-
-    if len (message.text.split()) == 1:
-        bot.reply_to(message, 'Неверный формат:\n<code>/unmute [ID]</code>', parse_mode = 'html')
-        return
-
-    if message.text.split()[1].isdigit() == False:
-        bot.reply_to (message, 'ID указан неверно.')
-        return
-
-    mute_id = int (message.text.split()[1]) - 1
-
-    try:
-        data = json.load(open('punishments.json', 'r', encoding='utf-8'))
-
-    except json.JSONDecodeError:
-        data = []
-
-    for el in data:
-        if int (el['punishment_id']) == mute_id:
-            if len(message.text.split()) > 2 and message.text.split()[2] == 'perm':
-                el['ignore_punishment'] = True
-                data[mute_id] = el
-                json.dump(data, open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
-                bot.reply_to(message, f'Мут №{message.text.split()[1]} снят.\nСледующие муты этого пользователя бот будет игнорировать.')
-
-            else:
-                data.remove(el)
-                json.dump(data, open('punishments.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=4)
-                bot.reply_to(message, f'Мут №{message.text.split()[1]} снят.')
-
-            break
-
-    else:
-        bot.reply_to(message, f'Не удалось найти мут с номером "{message.text.split()[1]}".')
-        return
+    bot.reply_to(message, unmute_user(command[1]))
 
 
 @bot.message_handler(commands=['feedback', 'fb', 'отзыв', 'фидбэк', 'фидбек', 'фб', 'отзывы'])
@@ -918,7 +855,7 @@ def register_hs_markup(message):
     
     MAX_NAME_LEN = 22
     if len(message.text) > MAX_NAME_LEN:
-        raise HsRegistrationError(f'Слишком длинное название. Необходимо указать не более чем {MAX_NAME_LEN} символа.')
+        raise HsRegistrationError(too_long_value(message, len(message.text), MAX_NAME_LEN))
     
     if Hs(message.text).exists:
         raise HsRegistrationError('Организация с таким названием уже существует.')
