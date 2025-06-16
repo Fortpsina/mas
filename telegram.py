@@ -16,8 +16,6 @@ from plugins.name_checker import *
 from plugins.langs import *
 from plugins.utils import *
 from plugins.chat_moder import *
-
-from plugins.DayOfWeek import is_date
 from plugins.TagSwitcher import tags_swither
 
 from config import *
@@ -76,36 +74,48 @@ def forcereg(message):
         bot.reply_to(message, 'Пользователь зарегестрирован.')
 
 
+
+
 @bot.message_handler(commands=['help', '?', 'commands', 'команды', 'помощь', 'tutorial'])
 @basic_cmd_logger
 def help(message):
-    bot.reply_to(message, help_text(message, 'general'), parse_mode='html')
+    bot.reply_to(message, help_text(message, 'general'))
+
+
+
+
+@bot.message_handler(commands=['donate'])
+@basic_cmd_logger
+def donate(message):
+    bot.reply_to(message, donate_helper(message), reply_markup=donate_markup())
+
+
 
 
 @bot.message_handler(commands=['fill'])
 @group_management_cmd_logger
 def update_the_schedule_step_1 (message):
-    bot.reply_to(message, fill_schedule_instruction(message), parse_mode = 'html')
+    bot.reply_to(message, fill_schedule_instruction(message))
     bot.register_next_step_handler(message, update_the_schedule_step_2)
 
 def update_the_schedule_step_2 (message):
     requestors_group = UserProfile(message.from_user.id).user_group
-    bot.reply_to (message, Schedule.fill_week(message.text, requestors_group), parse_mode='html')
+    bot.reply_to(message, Schedule.fill_week(message.text, requestors_group))
+
+
 
 
 @bot.message_handler(commands=['attend'])
+@basic_cmd_logger
 def attend (message):
     global expect_geo
+
     if message.from_user.id in expect_geo:
-        bot.reply_to(message, attendance_text(message, 'await'))
-        return
+        raise NotEnoughRightsError(attendance_text(message, 'await'))
     
     expect_geo.append(message.from_user.id)
-
-    bot.reply_to(message,
-                 text=attendance_text(message, 'handle'),
+    bot.reply_to(message, text=attendance_text(message, 'handle'),
                  reply_markup=attendance_checker(attendance_text(message, 'button')))
-
 
 @bot.message_handler(content_types=['location'])
 @basic_cmd_logger
@@ -128,12 +138,13 @@ def location_handler(message):
                      'В отметке отказано, вы не на паре.',
                      reply_markup=geo_help_markup(geo.user_longitude, geo.user_latitude))
 
-
 @bot.message_handler(commands=['attendance'])
 @group_management_cmd_logger
 def attendance(message):
     user = UserProfile(message.from_user.id)
     bot.reply_to(message, Schedule(group_id=user.user_group).attendance())
+
+
 
 
 @bot.message_handler(commands=['schedule', 's', 'с', 'расписание', 'р'])
@@ -173,19 +184,23 @@ def schedule (message):
 
         if 'Monday' in photo:
             to_reply = render_schedule['reply'] + attendance_bar(message)
-            media_group.append(InputMediaPhoto(open(photo, 'rb'), caption=to_reply, parse_mode='html'))
+            media_group.append(InputMediaPhoto(open(photo, 'rb'), caption=to_reply))
 
         else:
             media_group.append(InputMediaPhoto(open(photo, 'rb')))
 
-    bot.send_media_group (message.chat.id, media = media_group, reply_to_message_id = message.id)
-    bot.delete_message (message_id = temp_msg_notify.message_id, chat_id = message.chat.id)
+    bot.send_media_group(message.chat.id, media = media_group, reply_to_message_id = message.id)
+    bot.delete_message(message_id = temp_msg_notify.message_id, chat_id = message.chat.id)
+
+
 
 
 @bot.message_handler(commands=['цвет', 'color'])
 @basic_cmd_logger
 def settings(message):
-    bot.send_message (message.chat.id, f'Выбор темы', reply_markup=color_chooser_markup())
+    bot.send_message(message.chat.id, f'Выбор темы', reply_markup=color_chooser_markup())
+
+
 
 
 @bot.message_handler(commands=['dev'])
@@ -234,31 +249,26 @@ def dev_tools(message):
         exec(message.text.replace('/dev execute ', '', 1))
 
 
+
+
 @bot.message_handler(commands=['profile', 'prof', 'профиль'])
 @basic_cmd_logger
 def interactive_profile(message):
     cmd = message.text.split()
-    _id = message.from_user.id
+    looked_up_id = message.from_user.id
     _own_prifile = True
+    profile_keyboard = profile_options_markup()
 
-    if len(cmd) == 3 and cmd[2].isdigit():
-        _id = int(cmd[2])
-        _own_prifile = False
-    elif len(cmd) == 2 and cmd[1].isdigit():
-        _id = int(cmd[1])
-        _own_prifile = False
+    if len(cmd) == 2 and cmd[1].isdigit():
+        looked_up_id = int(cmd[1])
+        _own_prifile, profile_keyboard = False, None
 
-    profile = UserProfile(_id)
-    assert profile.exists, profile_not_found(message, _own_prifile)
+    profile = UserProfile(looked_up_id)
     
-    _to_reply = f"Профиль <b>{profile.user_name}</b>:\n\n"
-    _to_reply += f"  Группа: <code>{profile.user_group}</code>\n"
-    _to_reply += f"  ВК: <code>{profile.user_vk}</code>\n"
-    _to_reply += f"  ID: <code>{profile.user_id}</code>\n"
-    _to_reply += f"  Цвет: <code>{profile.user_color}</code>\n"
-    _to_reply += f"  Регистрация: <code>{profile.user_reg}</code>\n"
+    if not profile.exists:
+        raise ProfileNotFoundError(profile_not_found(message, _own_prifile))
 
-    bot.reply_to(message, _to_reply, parse_mode='html', reply_markup=profile_options_markup() if _own_prifile else None)
+    bot.reply_to(message, profile_info(message, profile), reply_markup=profile_keyboard)
 
 @basic_cmd_logger
 def set_new_profile_name(message):
@@ -280,16 +290,18 @@ def set_new_profile_vk(message):
     bot.reply_to(message, profile.update('vk_link', message.text.strip()))
 
 
+
+
 @bot.message_handler(commands=['exam'])
 @basic_cmd_logger
-def find_answer_for_exam (message):
+def find_answer_for_exam(message):
     exams = json.load(open('answers.json', 'r'))
     user = UserProfile(message.from_user.id)
     command = message.text.split()
     QUESTION_REQUESTS = ("q", "questions", "question")
 
     if not user.exists:
-        raise ProfileNotFoundError(profile_not_found(message))
+        raise ProfileNotFoundError(profile_not_found(message, True))
 
     all_tags = []
     all_files = []
@@ -406,11 +418,11 @@ def find_answer_for_exam (message):
                 bot.reply_to(message, text_to_reply,
                              reply_markup=exam_slidebar_markup(el["file"], user.rights >= 2))
                 
-    elif len (command) >= 3 and command[1].lower() == 'set':
+    elif len(command) >= 3 and command[1].lower() == 'set':
         discipline = message.text.replace('/exam set ', '')
         max_name_len = 24
 
-        if len (discipline) > max_name_len:
+        if len(discipline) > max_name_len:
             optional_name_offer_1 = ''
             optional_name_offer_2 = ''
             optional_name_offer_3 = ''
@@ -420,50 +432,46 @@ def find_answer_for_exam (message):
                 optional_name_offer_1 += el
 
             for el in discipline.split():
-                if len (optional_name_offer_2) + len (el) <= max_name_len:
+                if len(optional_name_offer_2) + len(el) <= max_name_len:
                     optional_name_offer_2 += f'{el}'.replace(f'{el[0]}', f'{el[0].upper()}')
-
 
             if 1 < len (discipline.split()) < max_name_len + 1:
                 for el in discipline.split():
                     optional_name_offer_3 += el[0].upper()
 
-            bot.reply_to(message,
-                            f'Максимальная длина названия: <b>{max_name_len}</b>.\n' +
-                            f'Ваша длина: <b>{len(discipline)}</b>\n\n' +
-                            f'Предлагаю варианты:\n<code>{optional_name_offer_1}</code>\n' +
-                            f'<code>{optional_name_offer_2}</code>\n' +
-                            f'<code>{optional_name_offer_3}</code>',
-                            parse_mode = 'html')
-            return
-
+            raise ValueError(too_long_value(message, len(discipline), max_name_len)
+                             + f'\n\n<i>Предлагаю такие варианты:</i>\n'
+                             + f'<code>{optional_name_offer_1}</code>\n'
+                             + f'<code>{optional_name_offer_2}</code>\n'
+                             + f'<code>{optional_name_offer_3}</code>')
 
         try:
-            data = json.load (open('answers.json', 'r', encoding='utf-8'))
+            data = json.load(open('answers.json', 'r', encoding='utf-8'))
 
         except json.JSONDecodeError:
             data = []
 
+        instructions = f'<b>Правила оформлени перечня:</b>\n<i>1. одна строка = один вопрос, бот разделяет вопросы именно по отступам;\n2. Оставлять номера вопросов нежелательно;\n3. Если в одно сообщение не поместятся все вопросы, просто повторите команду <code>{message.text}</code> и отправьте только те вопросы, которые не поместились изначально - они будут добавлены к общему перечню.</i>'
+
         for dict in data:
-            if discipline in dict.values ():
+            if discipline in dict.values():
                 break
         else:
-            data.append (tags_swither (discipline))
-            json.dump (data, open ('answers.json', 'w', encoding='utf-8'), ensure_ascii = False, indent = 4)
+            tag_switched = tags_swither(discipline)
+            data.append(tag_switched)
+            discipline_dp = tag_switched['name_dp']
+            instructions = f'Вы создали новую таблицу по <b>"{discipline_dp}"</b>.\n\nОтправьте в чат список вопросов.\n\n' + instructions
+            json.dump(data, open('answers.json', 'w', encoding='utf-8'), ensure_ascii=False, indent = 4)
 
-        bot.reply_to(message, f'Вы создали новую таблицу <b>"{discipline}"</b>.\n\nОтправьте в чат список вопросов по принципу заполнения плана.\n\n<b>Правила оформлени перечня:</b>\n<i>1. В списке НЕ должно быть номеров вопросов;\n2. В списке НЕ должно быть лишних отступов;\n3. Одна строчка = 1 вопрос;\n4. Избегайте любых ковычек, поскольку они ломают скрипты;\n5. Учитывайте, что перечень вопросов может быть больше максимальной длины сообщения. Если в одно сообщение не поместятся все вопросы, просто повторите команду <code>{message.text}</code> и отправьте только те вопросы, которые не поместились изначально - они будут добавлены к общему перечню.</i>', parse_mode = 'html')
+        bot.reply_to(message, instructions)
 
         conn = sqlite3.connect(f'{discipline}.sql')
         cur = conn.cursor()
 
-        cur.execute(
-            'CREATE TABLE IF NOT EXISTS exam_tasks ' +
-            '(id int auto_increment primary key, task_id INTEGER, question varshar(256), answer varshar(4096), authors varshar(512), is_deleted varshar (10))'
-        )
+        cur.execute('CREATE TABLE IF NOT EXISTS exam_tasks \
+                    (id INTEGER PRIMARY KEY, task_id INTEGER, question varshar(256), \
+                    answer varshar(4096), authors varshar(512), is_deleted varshar (10))')
         conn.commit()
-
-        cur.execute('SELECT * FROM exam_tasks')
-        tasks = cur.fetchall()
         cur.close()
         conn.close()
 
@@ -495,58 +503,41 @@ def find_answer_for_exam (message):
         for el in all_results:
             bot.send_message(message.chat.id, el, disable_notification = True)
 
-def set_tasks_for_exam (message, discipline):
-    try:
-        all_tasks = message.text.splitlines()
+@basic_cmd_logger
+def set_tasks_for_exam(message, discipline):
+    all_tasks: list = message.text.splitlines()
 
-        for el in all_tasks:
-            if len(el) < 2:
-                all_tasks.remove(el)
+    conn = sqlite3.connect(f'{discipline}.sql')
+    cur = conn.cursor()
 
-        conn = sqlite3.connect(f'{discipline}.sql')
-        cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM exam_tasks')
+    i = cur.fetchone()[0]
 
-        cur.execute('SELECT * FROM exam_tasks')
-        tasks = cur.fetchall()
+    for task in all_tasks:
+        if len(task) < 2:
+            continue
 
-        i = len (tasks) + 1
+        i += 1
+        cur.execute ('INSERT INTO exam_tasks (task_id, question, answer, authors, is_deleted) ' +
+                     'VALUES ("%s", "%s", "%s", "%s", "%s")' % (i, task, DEFAULT_EXAM_ANSWER, f'<b>Авторы:</b>', 'False'))
 
-        for el in all_tasks:
-            cur.execute (
-                'INSERT INTO exam_tasks ' +
-                '(task_id, question, answer, authors, is_deleted) ' +
-                'VALUES ("%s", "%s", "%s", "%s", "%s")' % (i, el, 'Пока что ответа нет, но Вы можете его установить или подождать, когда он повяится.', f'<b>Авторы:</b>', 'False')
-            )
-            i += 1
+    conn.commit()
 
-        conn.commit()
+    cur.execute('SELECT * FROM exam_tasks')
+    tasks = cur.fetchall()
 
-        cur.execute('SELECT * FROM exam_tasks')
-        tasks = cur.fetchall()
+    logger.info(f'Записаны следующие вопросы к экзамену по предмету <i><b>"{discipline}"</b></i>:')
+    for task in tasks:
+        logger.info(f'{task[1]}. <i>{task[2]}</i>')
 
-        to_reply = f'Записаны следующие вопросы к экзамену по предмету <i><b>"{discipline}"</b></i>:\n'
-        for task in tasks:
-            to_reply += f'\n{task[1]}. <i>{task[2]}</i>'
-            print (f'task: {task}')
+    cur.execute('SELECT COUNT(*) FROM exam_tasks')
+    i = cur.fetchone()[0]
 
-        try:
-            bot.send_message(message.chat.id, f'{to_reply}\n\nДля ответа на вопросы используйте команду <code>/examanswer [Предмет] [Номер вопроса] [Ответ]</code>', parse_mode = 'html')
+    bot.send_message(message.chat.id, f'{i} вопросов по {discipline} успешно записано.')
+    bot.delete_message(message_id = message.id, chat_id = message.chat.id)
 
-        except:
-            bot.send_message(message.chat.id, f'Число вопросов по {discipline} в б/д: <b>{len(to_reply.splitlines()) - 2}</b>.\n\nДля ответа на вопросы используйте команду <code>/examanswer [Предмет] [Номер вопроса] [Ответ]</code>', parse_mode = 'html')
-
-        bot.delete_message(message_id = message.id, chat_id = message.chat.id)
-
-        if mas == True:
-            bot.send_message (428192863, f'Указанные вопросы:\n{message.text}')
-
-        cur.close()
-        conn.close()
-
-    except Exception as _ex:
-        print (_ex)
-        bot.reply_to(message, 'Произошла непредвиденная ошибка.')
-
+    cur.close()
+    conn.close()
 
 @bot.message_handler(commands=['examanswer'])
 @basic_cmd_logger
@@ -564,7 +555,7 @@ def examanswer (message):
 
     filename = cmd[1]
     task_id = int(cmd[2])
-    date = datetime.now().strftime("%d:%m:%Y %H:%M:%S")
+    date = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
     exams = json.load(open('answers.json', 'r'))
 
     for el in exams:
@@ -604,42 +595,43 @@ def examanswer (message):
     cur.close()
     conn.close()
 
-def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
+def examanswer_markup(message, calldata, requestor: UserProfile, temp_msg, filename, call):
+    index_of_task = int(calldata.split()[2])
+    answer: str | None = message.text
+    MAX_ANSWER_LEN = 3600
 
-    index_of_task = int (calldata.split()[2])
+    if not answer:
+        bot.reply_to(message, "Это не ответ :/")
+        return
+    
+    if not requestor.exists:
+        bot.reply_to(message, profile_not_found(message, True))
+    
+    answer = answer.replace ('"', '')
+    answer = answer.replace ("'", '')
 
-    if len (message.text) > 3600:
-        bot.reply_to(message, f'Максимальная длина ответа: 3600 символов. <i>Ваша длина: <b>{len(message.text)}</b>.</i>\n\n<i>Постарайтесь сократить решение и повторить попытку.</i>', parse_mode = 'html')
+    if len(message.text) > MAX_ANSWER_LEN:
+        bot.reply_to(message, too_long_value(message, len(message.text), MAX_ANSWER_LEN))
         return
 
     try:
         conn = sqlite3.connect(f'{filename}.sql')
         cur = conn.cursor()
-        cur.execute('SELECT * FROM exam_tasks')
-        exam_tasks = cur.fetchall()
 
-        for el in exam_tasks:
-            if int (el [1]) == int (index_of_task + 1):
+        cur.execute(f'SELECT * FROM exam_tasks WHERE task_id = {index_of_task + 1}')
+        exam_task = cur.fetchone()
 
-                new_authors = f'{el [4]}\n{requestor} (ред. от {datetime.now().strftime("%d:%m:%Y %H:%M:%S")})'
+        current_time = datetime.now() + timedelta(hours=3) if mas else datetime.now()
+        new_authors = f'{exam_task[4]}\n{requestor.user_name} (ред. от {current_time.strftime("%d.%m.%Y %H:%M:%S")})'
 
-                if mas:
-                    actual_time = datetime.now() + timedelta(hours=3)
-                    new_authors = f'{el [4]}\n{requestor} (ред. от {actual_time.strftime("%d.%m.%Y %H:%M:%S")})'
+        cur.execute (f'UPDATE exam_tasks SET answer = "{answer}" WHERE task_id = {int (exam_task [1])}')
+        cur.execute (f'UPDATE exam_tasks SET authors = "{new_authors}" WHERE task_id = {int (exam_task [1])}')
+        conn.commit ()
 
-                answer = str (message.text)
-                answer = answer.replace ('"', '')
-                answer = answer.replace ("'", '')
-
-                cur.execute (f'UPDATE exam_tasks SET answer = "{answer}" WHERE task_id = {int (el [1])}')
-                cur.execute (f'UPDATE exam_tasks SET authors = "{new_authors}" WHERE task_id = {int (el [1])}')
-                conn.commit ()
-
-                bot.delete_message (message_id = temp_msg.message_id, chat_id = temp_msg.chat.id)
-                bot.delete_message (message_id = message.message_id, chat_id = message.chat.id)
-                bot.answer_callback_query (callback_query_id = call.id,
-                                           show_alert = True,
-                                           text = f'Ответ №{index_of_task + 1} установлен.')
+        bot.delete_message(message_id = temp_msg.message_id, chat_id = temp_msg.chat.id)
+        bot.delete_message(message_id = message.message_id, chat_id = message.chat.id)
+        bot.answer_callback_query(callback_query_id=call.id, show_alert=True,
+                                  text=f'Ответ №{index_of_task + 1} установлен.')
 
         cur.close ()
         conn.close ()
@@ -648,7 +640,8 @@ def examanswer_markup (message, calldata, requestor, temp_msg, filename, call):
         print ('Произошла непредвиденная ошибка: ', _ex)
         bot.answer_callback_query (callback_query_id = call.id,
                                     text = f'Произошла непредвиденная ошибка{f": {_ex}" if len (str (_ex)) < 300 else ""}')
-        #bot.reply_to(message, f'Произошла непредвиденная ошибка{f": {_ex}" if len (str (_ex)) < 1000 else ""}')
+
+
 
 
 @bot.message_handler(commands=['mute'])
@@ -693,6 +686,8 @@ def unmute_user (message):
     bot.reply_to(message, unmute_user(command[1]))
 
 
+
+
 @basic_cmd_logger
 def register_hs_markup(message):
     if message.text == 'cancel':
@@ -710,6 +705,8 @@ def register_hs_markup(message):
     bot.reply_to(message, f'Вы успешно создали организацию.')
 
 
+
+
 @bot.callback_query_handler(func = lambda call: True)
 def button_menu_universal_func(call):
     requestor = UserProfile(call.message.chat.id)
@@ -720,6 +717,10 @@ def button_menu_universal_func(call):
     logger.info(_log)
 
     cmd: str = call.data.split()
+
+    if requestor.rights == 0:
+        bot.answer_callback_query(callback_query_id=call.id, show_alert=True, text=not_enough_rights(call.message))
+        return
 
     if 'choose_color_' in call.data:
         new_color = call.data.replace("choose_color_", "")
@@ -787,8 +788,8 @@ def button_menu_universal_func(call):
                 bot.send_message(call.message.chat.id, 'Не удалось найти вопросы. Возможно, они были удалены.')
 
         elif type_of_operation == 'edit':
-            temp_msg = bot.send_message (call.message.chat.id, f'Отправьте в чат свою версию решения. Вы будете добавлены в перечень авторов ответа. Постарайтесь ограничиться длиной в <b>3000</b> символов (чтобы сообщение могло корректно отобразиться в Telegram).\n\nВыбранная тема: <code>{tasks[index_of_task][2]}</code>', parse_mode = 'html')
-            bot.register_next_step_handler (call.message, examanswer_markup, call.data, requestor, temp_msg, filename, call)
+            temp_msg = bot.send_message(call.message.chat.id, f'Отправьте в чат свою версию решения. Вы будете добавлены в перечень авторов ответа. Постарайтесь ограничиться длиной в <b>3000</b> символов (чтобы сообщение могло корректно отобразиться в Telegram).\n\nВыбранная тема: <code>{tasks[index_of_task][2]}</code>')
+            bot.register_next_step_handler(call.message, examanswer_markup, call.data, requestor, temp_msg, filename, call)
 
         elif type_of_operation == 'delete':
             for el in tasks:
@@ -805,12 +806,13 @@ def button_menu_universal_func(call):
         cur.close()
         conn.close()
 
-        bot.edit_message_text(message_id=call.message.id,
-                              chat_id=call.message.chat.id,
-                              text=text_to_reply,
-                              reply_markup=exam_slidebar_markup(filename=filename,
-                                                                additional_rights=requestor.rights >= 2,
-                                                                index_of_task=index_of_task))
+        if type_of_operation in ('previous', 'next'):
+            bot.edit_message_text(message_id=call.message.id,
+                                  chat_id=call.message.chat.id,
+                                  text=text_to_reply,
+                                  reply_markup=exam_slidebar_markup(filename=filename,
+                                                                    additional_rights=requestor.rights >= 2,
+                                                                    index_of_task=index_of_task))
 
 
     elif 'group' == cmd[0]:
@@ -858,11 +860,11 @@ def button_menu_universal_func(call):
 
             if _organisation.exists:
                 _org_name: str = _organisation.name
-                bot.send_message(call.message.chat.id, f'Вы уже создали свою организацию: <code>{_org_name}</code>.', parse_mode='html')
+                bot.send_message(call.message.chat.id, f'Вы уже создали свою организацию: <code>{_org_name}</code>.')
                 return
             
             create_table('hs')
-            bot.send_message(call.message.chat.id, 'Сейчас Вы создаёте новую организацию. Укажите её название и в дальнейшем Вы сможете изменить другие параметры организации.\n\nВы не можете создать больше одной организации. Если вы хотите отменить её создание,  отправьте в чат "<code>cancel</code>".', parse_mode='html')
+            bot.send_message(call.message.chat.id, 'Сейчас Вы создаёте новую организацию. Укажите её название и в дальнейшем Вы сможете изменить другие параметры организации.\n\nВы не можете создать больше одной организации. Если вы хотите отменить её создание,  отправьте в чат "<code>cancel</code>".')
             bot.register_next_step_handler(call.message, register_hs_markup)
         
         elif cmd[1] == 'options':
@@ -891,12 +893,16 @@ def button_menu_universal_func(call):
         else:
             bot.send_message(call.message.chat.id, 'В разработке...')
 
+    
+    elif 'donate' == cmd[0]:
+        bot.send_message(call.message.chat.id, '...')
+
 
 # @bot.message_handler(func = lambda message: True)
 @bot.message_handler(content_types = ["text", "audio", "document", "photo", "sticker", "video", "video_note", "voice"])
-def chat_control (message):
+def chat_control(message):
     if message.chat.type == 'private':
-        print ('[Не распознано] ' + who_is_requestor(message)[0])
+        print('[Не распознано] ' + who_is_requestor(message)[0])
 
         if message.text[0] == '/':
             bot.reply_to(message, 'Команда не была указана или была указана, но неверно.\nОтправьте <b>/help</b> для просмотра доступных команд.', parse_mode = 'html')
@@ -928,14 +934,14 @@ def chat_control (message):
                     print ('[Не распознано] ' + who_is_requestor(message)[0])
 
                 if message.json['date'] < el ['last_date']:
-                    print ('[Удалено] ' + who_is_requestor(message)[0])
-                    bot.delete_message (chat_id=message.chat.id, message_id=message.message_id)
+                    print('[Удалено] ' + who_is_requestor(message)[0])
+                    bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                     bot.send_message(message.from_user.id, message_was_deleted(message))
                     return
 
                 break
         else:
-            print ('[Не распознано] ' + who_is_requestor(message)[0])
+            print('[Не распознано] ' + who_is_requestor(message)[0])
 
 
 bot.infinity_polling()
