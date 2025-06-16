@@ -1,6 +1,7 @@
 """Данный модуль содержит фразы, используемые в ответах бота на следующих языках:
 английский, русский, испанский, немецкий, французский, украинский, польский, японский и корейский."""
 
+
 # Сообщить, что команда не может быть исполнена
 # ввиду несоответствия уровня прав команде.
 NOT_ENOUGH_RIGHTS_ERROR = {
@@ -85,6 +86,80 @@ def profile_not_found(message, own: bool = False) -> str:
 
 
 
+# Выдать информацию о профиле, если профиль существует.
+PROFILE_INFO_TEXT = {
+    'en': '''<b>%s</b> profile:\n
+    Group: <code>%s</code>
+    Hs: <code>%s</code>
+    VK: <code>%s</code>
+    ID: <code>%s</code>
+    Color: <code>%s</code>
+    Reg: <code>%s</code>
+    Status: <code>%s</code>''',
+
+    'ru': '''Профиль <b>%s</b>:\n
+    Группа: <code>%s</code>
+    Организация: <code>%s</code>
+    ВК: <code>%s</code>
+    ID: <code>%s</code>
+    Цвет: <code>%s</code>
+    Регистрация: <code>%s</code>
+    Статус: <code>%s</code>'''
+}
+
+RIGHTS_ASSETS = {
+    0: {
+        'en': 'Banned user',
+        'ru': 'Заблокированный пользователь'
+    },
+    1: {
+        'en': 'User',
+        'ru': 'Пользователь'
+    },
+    2: {
+        'en': 'Vice Chairman of the group',
+        'ru': 'Зам. председателя группы'
+    },
+    3: {
+        'en': 'Chairman of the group',
+        'ru': 'Председатель группы'
+    },
+    4: {
+        'en': 'Admin',
+        'ru': 'Администратор'
+    },
+    5: {
+        'en': 'Senior admin',
+        'ru': 'mas senior admin'
+    }
+}
+
+def profile_info(message, profile) -> str:
+    '''<code>%s</code> profile:\n
+    Group: <code>%s</code>\n
+    Hs: <code>%s</code>\n
+    VK: <code>%s</code>\n
+    ID: <code>%s</code>\n
+    Color: <code>%s</code>\n
+    Reg: <code>%s</code>\n
+    Status: <code>%s</code>'''
+    
+    lang: str = message.from_user.language_code or 'en'
+    default: str = PROFILE_INFO_TEXT['en']
+    profile_data = (
+        profile.user_name,
+        profile.user_group,
+        profile.hs_name,
+        profile.user_vk,
+        profile.user_id,
+        profile.user_color,
+        profile.user_reg,
+        RIGHTS_ASSETS[profile.rights][lang]
+    )
+    return PROFILE_INFO_TEXT.get(lang, default) % profile_data
+
+
+
 # Сообщить, что пользователю отказано в регистрации,
 # поскольку он уже был зарегестрирован.
 PROFILE_ALREADY_EXISTS_ERROR = {
@@ -156,6 +231,26 @@ def help_text(message, module: str) -> str:
 
 
 
+
+DONATE_TEXT_GENERAL = {
+    'en': """Donate text
+    1.
+    2.
+    3. """,
+
+    'ru': """Текст при покупке доната
+    1.
+    2.
+    3. """
+}
+
+def donate_helper(message) -> str:
+    lang: str = message.from_user.language_code or 'en'
+    default: str = DONATE_TEXT_GENERAL['en']
+    return DONATE_TEXT_GENERAL.get(lang, default)
+
+
+# Сопровождать пользователя при его регистрации.
 REG_1 = {
     'en': '''<b>Welcome to M.A.S. (A.S. Martinow) support bot!</b>\n
 This bot is to improve the experience of studying and automize some routine work.\n
@@ -215,20 +310,24 @@ def reg_text(message, stage: int) -> str:
 
 
 EXAM_HELP = {
-    'ru': '''Уточните свой запрос, введя 1-2 аргумента, согласно следующим примерам:
-
-<b>Пример 1:</b> <code>/exam мп 13</code> - 13 вопрос по Международному праву <i>(указать предмет можно первыми буквами (МП), первым словом (Международное), полным названием (международноеправо) и т.д.)</i>;
-
-<b>Пример 2:</b> <code>/exam понятие, признаки</code> - поиск вопроса по ключевым словам <i>(чем меньше ключевых слов - тем шире поиск);</i>
-
-<b>Пример 3:</b> <code>/exam фп</code> - открыть меню с вопросами во конкретному предмету;
-
-<b>Пример 4:</b> <code>/exam question zemelnoe</code> - вывести только вопросы к экзамену по земельному праву (question можно заменить на q);
-
+    'en': '''There are some tips for the command:\n
+<b>Example 1:</b> <code>/exam мп 13</code> - 13 question for "Международное право" <i>(the exam can be determined by first letters (МП), first word (Международное), full-name (международноеправо) etc.)</i>;\n
+<b>Example 2:</b> <code>/exam понятие, признаки</code> - find a question <i>(less words - wider searching);</i>\n
+<b>Example 3:</b> <code>/exam фп</code> - open slide-bar with questions and answers of a certain exam;\n
+<b>Example 4:</b> <code>/exam question zemelnoe</code> - output only questions as a list for a certain exam ("question" can be replaced as "q");\n
+Non answer-viewing commands:
+1. <code>/exam set Философия</code> - set up a question base for a certain exam.
+2. <code>/exam delete гп</code> - delete all questions for a certain exam.\n
+<b>Or open a slide-bar with questions and answers for a certain exam:</b>''',
+    
+    'ru': '''Уточните свой запрос, введя 1-2 аргумента, согласно следующим примерам:\n
+<b>Пример 1:</b> <code>/exam мп 13</code> - 13 вопрос по Международному праву <i>(указать предмет можно первыми буквами (МП), первым словом (Международное), полным названием (международноеправо) и т.д.)</i>;\n
+<b>Пример 2:</b> <code>/exam понятие, признаки</code> - поиск вопроса по ключевым словам <i>(чем меньше ключевых слов - тем шире поиск);</i>\n
+<b>Пример 3:</b> <code>/exam фп</code> - открыть меню с вопросами во конкретному предмету;\n
+<b>Пример 4:</b> <code>/exam question zemelnoe</code> - вывести только вопросы к экзамену по земельному праву (question можно заменить на q);\n
 Команды не для просмотра ответов:
 1. <code>/exam set Философия</code> - создать постоянный перечень вопросов к экзамену.
-2. <code>/exam delete гп</code> - удалить вопросы к экзамену.
-
+2. <code>/exam delete гп</code> - удалить вопросы к экзамену.\n
 <b>Предварительно предлагаю выбрать перечень вопросов и ответов к одму из следующих экзаменов:</b>'''
 }
 
@@ -244,13 +343,21 @@ name_dp - название в дательном падеже
 '''
 }
 
-EXAM_NOT_EXISTING_TAG_ERROR = {
-    'ru': '''Вы не указали предмет или указали несуществующий.
+EXAM_NOT_FOUND_ERROR = {
+    'en': 'No exam found by this tag. Only one-word tags are usable. Enter <code>/exam config</code> to search usable tag.',
 
-Используйте тег предмета, который состоит из одного символа.
-
-Вы можете использовать <code>/exam config</code> для поиска тегов.'''
+    'ru': '''Вы не указали предмет или указали несуществующий.\n
+Используйте тег предмета, который состоит из одного символа.\n
+Вы можете использовать <code>/exam config</code> для поиска тегов.''',
 }
+
+def exam_tip_swithcer(message):
+    lang: str = message.from_user.language_code or 'en'
+    default: str = EXAM_NOT_FOUND_ERROR['en']
+    return EXAM_NOT_FOUND_ERROR.get(lang, default)
+
+DEFAULT_EXAM_ANSWER = 'Пока что ответа нет, но Вы можете его установить или подождать, когда он повяится.'
+
 
 
 DEV_HELP = {
@@ -279,7 +386,24 @@ FEEDBACKS_HELP = {
 Выберете, что вы хотите сделать:"""
 }
 
+MUTE_HELP = {
+    'en': '',
+    'ru': 'Формат команды:\n<code>/mute [Пользователь*] [Время в секундах] [Причина]</code>\n\n*Указать можно одно из следующих значений:\n<i>1) Telegram ID (указан в расширенном профиле бота, если пользователь зарегестрирован, в противом случае можно проверить через консоль);\n2) Тэг пользователя (Можно скопировать через просмотр профиля в ТГ);\n3) Имя пользователя в Telegram, если его ID не отображается и Тэг в профиле скрыт.</i>',
+}
 
+def help_switcher(message, command: str) -> str:
+    reference = {
+        'exam': EXAM_HELP,
+        'exam config': EXAM_CONFIGS,
+        'exam doesnt exist'
+        'dev': DEV_HELP,
+        'feedback': FEEDBACKS_HELP,
+        'mute': MUTE_HELP,
+    } [command]
+
+    lang: str = message.from_user.language_code or 'en'
+    default: str = reference['en']
+    return reference.get(lang, default)
 
 
 ATTENDANCE_HANDLING_MSG = {
@@ -376,3 +500,18 @@ def attendance_bar(message) -> str:
     lang: str = message.from_user.language_code or 'en'
     default: str = SCHEDULE_ATTENDANCE_REPORT_BAR['en']
     return SCHEDULE_ATTENDANCE_REPORT_BAR.get(lang, default)
+
+
+
+MESSAGE_WAS_DELETED_WARNING_TEXT = {
+    'en': '''⚠️ Your message was deleted because You have been muted.\n
+Text of the message: <code>%s</code>''',
+
+    'ru': '''⚠️ Ваше сообщение было удалено, потому что Вам был выдан мут.\n
+Текст сообщения: <code>%s</code>'''
+}
+
+def message_was_deleted(message) -> str:
+    lang: str = message.from_user.language_code or 'en'
+    default: str = MESSAGE_WAS_DELETED_WARNING_TEXT['en']
+    return MESSAGE_WAS_DELETED_WARNING_TEXT.get(lang, default) % message.text
