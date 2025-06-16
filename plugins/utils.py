@@ -1,8 +1,9 @@
-from sqlite3 import connect
-import logging
-from datetime import datetime
-from random import randint, choice
+from logging import getLogger, INFO, FileHandler
+from requests.exceptions import ConnectionError
 from telebot.types import ReactionTypeEmoji
+from random import randint, choice
+from datetime import datetime
+from sqlite3 import connect
 from config import *
 
 if __name__ == "__main__":
@@ -13,22 +14,17 @@ else:
     from .langs import not_enough_rights, profile_not_found
 
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.FileHandler('logs.log'))
+logger = getLogger()
+logger.setLevel(INFO)
+logger.addHandler(FileHandler('logs.log'))
 
 
 class NotEnoughRightsError(Exception): pass
 class ProfileNotFoundError(Exception): pass
 class ProfileAlreadyExistsError(Exception): pass
-
-
-class GeoRequest:
-    def __init__(self, message):
-        self.longitude = float (message.location.longitude)
-        self.latitude = float (message.location.latitude)
-
-        self.in_rea = 37.62 <= self.longitude <= 37.64 and 55.72 <= self.latitude <= 55.74
+class HsRegistrationError(Exception): pass
+class CommandStructureError(Exception): pass
+class ExamSearchingError(Exception): pass
 
 
 def basic_universal_logger(user: UserProfile, message) -> None:
@@ -41,18 +37,42 @@ def basic_universal_logger(user: UserProfile, message) -> None:
 
 
 def basic_cmd_logger(func):
-    def wrapper(message):
+    def wrapper(message, *args):
         user = UserProfile(message.from_user.id)
         basic_universal_logger(user, message)
 
         if randint(0, RANDOM_EMODJI_CHANCE) == 1:
             emoji_reaction(message, choice(RANDOM_EMOJI_EASTERN_EGG))
 
+        if has_sql_injection(message.text):
+            bot.reply_to(message, 'You have been banned because You commited the attempt to harm my data with SQL-injection.\
+                          \nIf You believe that there is nothing dangerous in Your actions, please contact the administrator.')
+            logger.info(f"{user.user_name}: {user.ban()} (was blocked due to sql-injection)")
+            return
+
         if not user.exists or user.rights >= 1:
             try:
-                func(message)
+                func(message, *args)
             except AssertionError as expected_error_msg:
-                bot.reply_to(message, expected_error_msg, parse_mode='html')
+                bot.reply_to(message, expected_error_msg)
+            except ConnectionError:
+                bot.reply_to(message, "Couldn't establish connection to Telegram API. Please, try again later.")
+            except Exception as error_msg:
+                bot.reply_to(message, error_msg)
+                print(error_msg)
+        else:
+            bot.reply_to(message, not_enough_rights(message))
+
+    return wrapper
+
+def admin_cmd_logger(func):
+    def wrapper(message):
+        user = UserProfile(message.from_user.id)
+        basic_universal_logger(user, message)
+
+        if user.exists and user.rights >= 4:
+            try:
+                func(message)
             except Exception as error_msg:
                 bot.reply_to(message, error_msg, parse_mode='html')
                 print(error_msg)
@@ -63,25 +83,33 @@ def basic_cmd_logger(func):
 
 
 def group_management_cmd_logger(func):
-    def wrapper(message):
+    def wrapper(message, *args):
         user = UserProfile(message.from_user.id)
         basic_universal_logger(user, message)
 
         _incorrect_group_assets = ('Группа не указана')
+
+        if has_sql_injection(message.text):
+            bot.reply_to(message, 'You have been banned because You commited the attempt to harm my data with SQL-injection.\
+                          \nIf You believe that there is nothing dangerous in Your actions, please contact the administrator.')
+            logger.info(f"{user.user_name}: {user.ban()} (was blocked due to sql-injection)")
+            return
         
         if not user.exists:
             bot.reply_to(message, profile_not_found(message, True))
         elif user.rights < 2:
             bot.reply_to(message, not_enough_rights(message))
         elif user.user_group in _incorrect_group_assets:
-            bot.reply_to(message, 'Не могу определить Вашу группу. Используйте /profile для её настройки и устранения этой ошибки.')
+            bot.reply_to(message, "Couldn't identify your group. Use the following command to fix this error: /profile")
         else:
             try:
-                func(message)
+                func(message, *args)
             except AssertionError as expected_error_msg:
-                bot.reply_to(message, expected_error_msg, parse_mode='html')
+                bot.reply_to(message, expected_error_msg)
+            except ConnectionError:
+                bot.reply_to(message, "Couldn't establish connection to Telegram API. Please, try again later.")
             except Exception as error_msg:
-                bot.reply_to(message, error_msg, parse_mode='html')
+                bot.reply_to(message, error_msg)
                 print(error_msg)
 
     return wrapper
