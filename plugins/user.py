@@ -26,11 +26,11 @@ USERS_STRUCT = """CREATE TABLE IF NOT EXISTS Users
 HS_STRUCT = """CREATE TABLE IF NOT EXISTS Hs 
     (id INTEGER PRIMARY KEY,
     name TEXT,
-    groups TEXT,
+    structs TEXT,
     students INTEGER,
     founder_id INTEGER,
-    longtitude REAL,
-    lantitude REAL,
+    longitude REAL,
+    latitude REAL,
     lessons TEXT)"""
 
 GROUP_STRUCT = """CREATE TABLE IF NOT EXISTS Groups 
@@ -45,16 +45,15 @@ GROUP_STRUCT = """CREATE TABLE IF NOT EXISTS Groups
     hs_struct TEXT,
     prom DATE,
     papers TEXT,
-    founder_id INTEGER)"""
+    founder_id INTEGER,
+    premium_until DATE,
+    invite_only_mode TEXT)"""
 
-RIGHTS_ASSETS = {0: "banned",    1: "user",
-                 2: "group_vc",  3: "group_chairman",
-                 4: "admin",     5: "fortpsina"}
 
 def create_table(table_type: str, db: str = 'database') -> None:
     _procedures = {"users": USERS_STRUCT,
                    "hs": HS_STRUCT,
-                   "group": GROUP_STRUCT}
+                   "groups": GROUP_STRUCT}
     
     if not table_type in _procedures.keys():
         raise ValueError("Указана несуществующая таблица.")
@@ -108,9 +107,9 @@ class UserProfile:
             self.user_group = user_data[9]
             self.user_reg   = user_data[10]
             self.rights     = user_data[11]
-            self.role       = RIGHTS_ASSETS[self.rights]
         else:
             self.exists = False
+            self.user_name = '?'
 
     def update(self, column: str, new_value: str | int) -> str:
         _allowed = [word.split()[0] for word in USERS_STRUCT.splitlines()[2:]]
@@ -150,6 +149,9 @@ class UserProfile:
             return PROFILE_UTIL_DELETED_V['ru'] + f'{self.user_name}:\n{b_vklink}\n{b_tgid}\n{b_color}\n{b_reg}'
 
     def ban(self):
+        if not self.exists:
+            register_another_user(self.user_id)
+            return UserProfile(self.user_id).update('rights_level', 0)
         return self.update('rights_level', 0)
     
     def unban(self):
@@ -171,17 +173,18 @@ class Hs:
         self.cur.execute('SELECT * FROM Hs WHERE %s = "%s"' % (self.column_for_clue, name_or_founder))
         self.all_data = self.cur.fetchone()
 
-        self.exists: bool = self.cur.rowcount == 1
-
-        if self.exists:
+        if self.all_data:
+            self.exists: bool = True
             self.primary_id: int = self.all_data[0]
             self.name: str = self.all_data[1]
             self.groups: str = self.all_data[2]
             self.students: int = self.all_data[3]
             self.founder = UserProfile(int(self.all_data[4]))
-            self.longtitude: float = self.all_data[5]
-            self.lantitude: float = self.all_data[6]
+            self.longitude: float = self.all_data[5]
+            self.latitude: float = self.all_data[6]
             self.lessons: str = self.all_data[7]
+        else:
+            self.exists: bool = False
 
     def update(self, column: str, new_value) -> str:
         _allowed = [word.split()[0] for word in HS_STRUCT.splitlines()[2:]]
@@ -193,24 +196,52 @@ class Hs:
                 
         db_lock = Lock()
         with db_lock:
-            self.cur.execute(f'SELECT id, {column} from Hs WHERE {self.column_for_clue} = {self.name_or_founder}')
+            self.cur.execute(f'SELECT id, {column} from Hs WHERE {self.column_for_clue} = "{self.name_or_founder}"')
             old_value = self.cur.fetchone()[1]
             self.cur.execute(f'UPDATE Users SET {column} = ? WHERE {self.column_for_clue} = ?', (new_value, self.name_or_founder))
             self.conn.commit()
 
             return f"Значение изменено с {old_value} на {new_value}."
 
+    def delete(self, physically: bool = True, message = None) -> str:
+        if message and not self.exists:
+            return profile_not_found(message)
+        
+        if physically:
+            self.cur.execute(f'DELETE FROM Hs WHERE {self.column_for_clue} = "{self.name_or_founder}"')
+            self.conn.commit()
+            return 'Физически удалено.'
 
-    def delete(self):
-        self.cur.execute()
-        self.conn.commit()
-
+        else:
+            self.update('founder_id', 0)
+            self.update('name', f'Ранее называлось "{self.name}"')
+            return 'Скрыто.'
 
     def __del__(self):
         self.cur.close()
         self.conn.close()
 
 
+class Group:
+    def __init__(self, hs: Hs, name: str):
+        self.conn = connect('database.sql', check_same_thread=False)
+        self.cur = self.conn.cursor()
+
+        self.cur.execute(f'SELECT * FROM Groups')
+        user_data = self.cur.fetchone()
+
+        if user_data:
+            self.exists = True
+        else:
+            self.exists = False
+
+    def update(self): pass 
+    def delete(self): pass
+
+    def __del__(self):
+        self.cur.close()
+        self.conn.close()
+    
 
 def register_user(user_name: str, user_id: int, **custom_data) -> None:
     conn = connect('database.sql')
@@ -251,7 +282,7 @@ def register_hs(message) -> None:
     _i = message.from_user.id
     _l = ""
 
-    cur.execute(f'INSERT INTO Hs (name, groups, students, founder_id, longtitude, lantitude, lessons) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    cur.execute(f'INSERT INTO Hs (name, structs, students, founder_id, longitude, latitude, lessons) VALUES (?, ?, ?, ?, ?, ?, ?)',
                 (_n, '', 1, _i, 0.0, 0.0, _l))
     conn.commit()
 
