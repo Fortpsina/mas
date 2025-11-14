@@ -66,13 +66,78 @@ class WordDoc:
         Извлекает все содержимое документа в виде XML-строки
         """
         if filename:
-            doc = Document(f"{filename}.docx")
+            doc = Document(D_ROUTE + filename + ".docx")
         else:
             doc = self.document
             
         return doc.element.body.xml
-            
 
+    def _copy_paragraph(self, paragraph):
+        new_paragraph = self.document.add_paragraph(style=paragraph.style)
+        for run in paragraph.runs:
+            new_run = new_paragraph.add_run(run.text)
+            # Копируем свойства форматирования
+            new_run.bold = run.bold
+            new_run.italic = run.italic
+            new_run.underline = run.underline
+            if run.font.color.rgb:
+                new_run.font.color.rgb = run.font.color.rgb
+            if run.font.size:
+                new_run.font.size = run.font.size
+            if run.font.name:
+                new_run.font.name = run.font.name
+
+    def _copy_table(self, table):
+        """Копирует таблицу с сохранением структуры и содержимого"""
+        new_table = self.document.add_table(rows=len(table.rows), cols=len(table.columns))
+        
+        if table.style:
+            new_table.style = table.style
+        
+        for i, row in enumerate(table.rows):
+            for j, cell in enumerate(row.cells):
+                new_cell = new_table.cell(i, j)
+                new_cell.text = ""
+                for paragraph in cell.paragraphs:
+                    self._copy_paragraph_to_cell(paragraph, new_cell)
+
+    def _copy_paragraph_to_cell(self, paragraph, cell):
+        """Копирует параграф в ячейку таблицы"""
+        new_paragraph = cell.add_paragraph(style=paragraph.style)
+        for run in paragraph.runs:
+            new_run = new_paragraph.add_run(run.text)
+            new_run.bold = run.bold
+            new_run.italic = run.italic
+            new_run.underline = run.underline
+            if run.font.color.rgb:
+                new_run.font.color.rgb = run.font.color.rgb
+            if run.font.size:
+                new_run.font.size = run.font.size
+            if run.font.name:
+                new_run.font.name = run.font.name
+
+    def copy_all_content_from(self, donor_doc):
+        """Копирует все содержимое из другого документа WordDoc"""
+        donor = donor_doc.document
+        
+        for paragraph in donor.paragraphs:
+            self._copy_paragraph(paragraph)
+        
+        for table in donor.tables:
+            self._copy_table(table)
+        
+        if donor.sections and self.document.sections:
+            self._copy_section_properties(donor.sections[0], self.document.sections[0])
+
+    def _copy_section_properties(self, source_section, target_section):
+        """Копирует свойства раздела"""
+        target_section.page_height = source_section.page_height
+        target_section.page_width = source_section.page_width
+        target_section.left_margin = source_section.left_margin
+        target_section.right_margin = source_section.right_margin
+        target_section.top_margin = source_section.top_margin
+        target_section.bottom_margin = source_section.bottom_margin
+            
 def extract_text(file: WordDoc):
     full_text = []
     for paragraph in file.document.paragraphs:
@@ -81,10 +146,10 @@ def extract_text(file: WordDoc):
     return '\n'.join(full_text)
 
 def merge_files(donor: WordDoc, target: WordDoc):
-    for element in donor.document.element.body:
-        new_element = parse_xml(element.xml)
-        target.document.element.body.append(new_element)
-    
+    """
+    Улучшенная функция слияния файлов, которая правильно копирует таблицы
+    """
+    target.copy_all_content_from(donor)
     target.save()
     print(f"Все содержимое из '{donor.name}.docx' скопировано в '{target.name}.docx'")
     
